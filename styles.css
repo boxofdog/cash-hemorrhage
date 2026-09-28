@@ -1,0 +1,3493 @@
+.budget-dashboard {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2em 1.5em 4em;
+}
+
+@media (max-width: 700px) {
+  .budget-dashboard { padding: 1.2em 0.8em 3em; }
+}
+
+/* The dashboard's masthead. It was sized like a section label — 1.6em, left
+   aligned — which read as a descriptor of the pane rather than the name of the
+   thing.
+
+   Everything here is a theme variable, so the title re-tints when the user
+   changes their Obsidian accent or switches light/dark. Nothing recalculates:
+   custom properties cascade live, so the repaint is the browser's, not ours.
+
+   Every var carries a fallback, and that is load-bearing rather than tidiness.
+   `-webkit-text-fill-color: transparent` means an unresolvable gradient leaves
+   the title INVISIBLE, not merely off-colour, so a theme that defines none of
+   these must still produce a valid gradient. */
+.budget-title {
+  font-size: 1.62em;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0.4em 0 1em;
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+  white-space: nowrap;
+
+  /* One hue, shaded across its length: pulled toward the body text colour at
+     the left, full accent through the middle, drifting toward cyan at the end.
+     Staying within a single hue is what keeps it from clashing with any theme
+     the user picks. The left blend toward --text-normal also sets a contrast
+     floor, which is what keeps it legible if an accent lands close to the
+     background. */
+  color: var(--text-accent, #7b6cd9);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--text-accent, #7b6cd9) 55%, var(--text-normal, #dddddd)) 0%,
+    var(--text-accent, #7b6cd9) 55%,
+    color-mix(in srgb, var(--text-accent, #7b6cd9) 70%, var(--color-cyan, #00bfbc)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Hairline rules out to the pane edges. They are flex items of the title, so
+   they need their fill colour reset — the transparent text fill above would
+   otherwise be inherited and hide them. */
+.budget-title::before,
+.budget-title::after {
+  content: "";
+  flex: 1;
+  min-width: 0;
+  height: 1px;
+  -webkit-text-fill-color: initial;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--text-accent, #7b6cd9) 45%, var(--background-modifier-border, #555555)),
+    transparent
+  );
+}
+
+/* letter-spacing leaves a trailing space after the final letter, so the gap on
+   the right is one space wider than the one on the left. Pulling the right rule
+   back by exactly that re-centres the word between them. */
+.budget-title::after {
+  margin-left: -0.3em;
+}
+
+.budget-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+  background:
+    linear-gradient(135deg, rgba(128, 128, 128, 0.06), rgba(128, 128, 128, 0.015)),
+    var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 6px 18px rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  padding: 1.7em 2em;
+  margin-bottom: 1.5em;
+  /* No flex-wrap here. It was right when the hero was a row of figures; on a
+     column stack it turns the three children into wrapped flex lines that
+     stretch to fill, which is where ~86px of dead air under the numbers came
+     from. Wrapping is the figures row's job now. */
+}
+
+.budget-hero-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+
+/* The figures that qualify the headline number rather than compete with it. */
+/* The figures sit in a track each, so two numbers fill the bar instead of
+   huddling in its left third. auto-fit rather than a media query, because a
+   plugin pane's width has nothing to do with the viewport's. */
+.budget-hero-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1.6em;
+  /* Not `baseline`: grid baseline-aligns by padding the shorter item from
+     above, which left ~86px of dead air under two equally tall figures. And not
+     `end`, which was only right while the blocks were the same height — once
+     Spendable grows an "of $X allowance" subtitle, aligning bottoms drops the
+     figure beside it to match. Aligning tops keeps the labels, and therefore the
+     numbers under them, on the same line. */
+  align-items: flex-start;
+}
+
+.budget-hero-secondary {
+  opacity: 0.92;
+  padding-left: 1.4em;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+/* The ways to check the figure above. Set apart so the hero reads as a number
+   and its evidence, rather than one undifferentiated block. */
+.budget-hero-detail {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 0.5em;
+}
+
+.budget-hero-detail .budget-collapsible {
+  margin: 0;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.budget-hero-detail .budget-collapsible-summary {
+  padding: 0.45em 0;
+}
+
+.budget-hero-detail .budget-collapsible-body {
+  padding: 0 0 0.4em;
+}
+
+.budget-hero-label {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.budget-hero-number {
+  font-size: 2.7em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-hero-number.budget-positive {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--text-success, #4caf50) 45%, transparent);
+}
+
+.budget-hero-number.budget-negative {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--text-error, #e05c5c) 40%, transparent);
+}
+
+.budget-hero-number-sm {
+  font-size: 1.6em;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+/* Sits under a hero figure to qualify it — "of $350 allowance". Deliberately
+   quiet: it explains the number above it rather than competing with it. */
+.budget-hero-sub {
+  margin-top: 0.3em;
+  font-size: 0.78em;
+  line-height: 1.3;
+  color: var(--text-faint, var(--text-muted));
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-positive { color: var(--text-success, #4caf50); }
+.budget-negative { color: var(--text-error, #e05c5c); }
+
+/* Keep the sweep modal's leading paragraphs readable rather than cramped. */
+.budget-sweep-modal > p {
+  line-height: 1.5;
+  margin: 0.4em 0 0.8em;
+}
+
+/* An undecided sweep sits on the Overview until it's acted on, so the button
+   has to sit alongside the message rather than wrap under it. */
+.budget-sweep-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  justify-content: space-between;
+}
+
+/* The picked transaction in Mark Paid. Selection has to be visible at a glance,
+   since linking the wrong one silently misfiles a payment. */
+.budget-apply-row.budget-apply-chosen {
+  background: color-mix(in srgb, var(--text-accent) 12%, transparent);
+  border-radius: var(--radius-s, 4px);
+}
+
+.budget-amount-hint {
+  font-weight: 600;
+  padding: 0.5em 0.8em;
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.budget-tx-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.budget-fixed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.45em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-fixed-row:last-child {
+  border-bottom: none;
+}
+
+.budget-fixed-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-fixed-paid {
+  opacity: 0.55;
+}
+
+.budget-fixed-paid .budget-fixed-name {
+  text-decoration: line-through;
+}
+
+/* Some rows use the name cell as a two-line text column — a label plus the
+   detail under it — rather than a single bill name. The ellipsis that keeps a
+   long merchant on one line was truncating that detail mid-sentence in a narrow
+   pane ("~$176.10 each · typ"), so those cells wrap instead. */
+.budget-fixed-name.budget-buffer-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.budget-warning {
+  /* Do NOT use --background-modifier-error with --text-error: both resolve to
+     red in dark themes, making the text invisible against its own background. */
+  background: rgba(224, 92, 92, 0.12);
+  border-left: 3px solid var(--text-error, #e05c5c);
+  color: var(--text-normal);
+  border-radius: 6px;
+  padding: 0.8em 1.2em;
+  margin-bottom: 1.5em;
+  font-weight: 500;
+}
+
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.2em;
+  margin-bottom: 1.2em;
+}
+
+.budget-card {
+  background: var(--background-primary-alt, var(--background-secondary));
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 1.3em 1.5em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s ease;
+}
+
+.budget-card:hover {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.budget-card h4 {
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+.budget-empty {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.budget-muted {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.budget-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+}
+
+.budget-list li:last-child {
+  border-bottom: none;
+}
+
+.budget-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-reason {
+  width: 100%;
+}
+
+.budget-tx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-tx-row:last-child {
+  border-bottom: none;
+}
+
+.budget-tx-text {
+  font-size: 0.92em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.budget-btn {
+  flex-shrink: 0;
+  border-radius: 20px;
+  padding: 0.35em 0.95em;
+  font-size: 0.82em;
+  font-weight: 500;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.budget-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--text-muted);
+}
+
+.budget-btn:active { transform: scale(0.97); }
+
+.budget-btn.mod-cta,
+.budget-action-btn.mod-cta {
+  background: linear-gradient(135deg, var(--text-accent, #7b6cd9), color-mix(in srgb, var(--text-accent, #7b6cd9) 62%, #3aa6d8));
+  color: #fff;
+  border: none;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--text-accent, #7b6cd9) 35%, transparent);
+}
+
+.budget-btn.mod-cta:hover,
+.budget-action-btn.mod-cta:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--text-accent, #7b6cd9) 45%, transparent);
+}
+
+.budget-btn-danger {
+  color: var(--text-error, #e05c5c);
+}
+
+.budget-pie-card {
+  margin-bottom: 1.2em;
+}
+
+.budget-pie-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin-bottom: 0.6em;
+}
+
+.budget-pie-header h4 {
+  margin: 0;
+}
+
+.budget-range-select {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0.3em 0.6em;
+  font-size: 0.85em;
+}
+
+.budget-legend-clickable {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.25em 0.4em;
+  margin: 0 -0.4em;
+}
+
+.budget-legend-clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.budget-drilldown {
+  margin-top: 1em;
+  padding-top: 0.8em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.budget-drilldown h5 {
+  margin: 0 0 0.5em 0;
+}
+
+.budget-pie-wrap {
+  display: flex;
+  gap: 2.4em;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.budget-pie-chart svg {
+  display: block;
+}
+
+/* One tall column left the amounts stranded an inch from their labels on a
+   wide pane. Flowing into as many columns as fit keeps each row short enough
+   to read across, and turns the dead space to the chart's right into content. */
+.budget-pie-legend {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  column-gap: 2em;
+  align-content: start;
+}
+
+.budget-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.25em 0;
+}
+
+.budget-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.budget-legend-label {
+  flex: 1;
+}
+
+.budget-legend-amount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.budget-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.5em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-rule-row:last-child {
+  border-bottom: none;
+}
+
+.budget-rule-text-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.budget-rule-pattern {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-rule-label {
+  font-weight: 600;
+  margin-top: 0.1em;
+}
+
+.budget-rule-btn-col {
+  display: flex;
+  gap: 0.4em;
+  flex-shrink: 0;
+}
+
+/* ---- Recent transactions feed ---- */
+
+.budget-recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8em;
+  padding: 0.5em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-recent-row:last-child {
+  border-bottom: none;
+}
+
+.budget-recent-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.budget-recent-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-recent-date {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+.budget-recent-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  flex-shrink: 0;
+}
+
+.budget-badge {
+  font-size: 0.75em;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+  white-space: nowrap;
+}
+
+.budget-badge-empty {
+  background: transparent;
+  border: 1px dashed var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.budget-badge-override {
+  border: 1px solid var(--text-accent, #7b6cd9);
+}
+
+/* ---- Modal bits ---- */
+
+.budget-modal-merchant {
+  font-weight: 600;
+  font-size: 1.05em;
+  margin-bottom: 0.1em;
+}
+
+.budget-modal-raw {
+  font-size: 0.78em;
+  margin-top: 0;
+  word-break: break-word;
+}
+
+.budget-modal-btn-row {
+  display: flex;
+  gap: 0.6em;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 1em;
+}
+
+/* ---- Label window ---- */
+/* The name and amount on one line, the bank's text small under them. */
+.budget-label-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+}
+.budget-label-head .budget-label-name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.budget-label-amount {
+  font-size: 1.15em;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.budget-label-raw {
+  font-size: 0.78em;
+  margin: 0.25em 0 0.9em;
+  overflow-wrap: anywhere;
+}
+/* "Applies to: …" — one quiet line until opened. */
+.budget-label-scope { margin-top: 0.3em; }
+.budget-label-scope > summary {
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  padding: 0.4em 0;
+  overflow-wrap: anywhere;
+}
+.budget-label-scope[open] > summary { color: var(--text-normal); }
+/* The transfer answer sits apart, on the left; the two real answers together
+   on the right, sharing the width on a phone. */
+.budget-label-btns .budget-label-transfer { margin-right: auto; }
+.budget-label-answers { display: flex; gap: 0.6em; margin-left: auto; }
+@media (max-width: 480px) {
+  .budget-label-answers { width: 100%; }
+  .budget-label-answers > button { flex: 1; }
+}
+body.is-mobile .budget-label-answers { width: 100%; }
+body.is-mobile .budget-label-answers > button { flex: 1; }
+
+/* ---- Settings tab ---- */
+
+/* The settings tab root. Gives the collapsible sections room to breathe without
+   inheriting the dashboard's denser spacing. */
+.budget-settings {
+  padding-bottom: 1.5em;
+}
+
+.budget-settings-search {
+  width: 100%;
+  padding: 0.5em 0.7em;
+  margin-bottom: 0.8em;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.budget-settings-rules {
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 0 0.8em;
+}
+
+/* ---- Pay period bar ---- */
+
+.budget-period-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  padding: 0.4em 0.2em 0.8em;
+}
+
+.budget-period-days {
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-autodetect-hint {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  font-size: 0.85em;
+}
+
+.budget-existing-rule-hint {
+  background: var(--background-secondary);
+  border-left: 3px solid var(--text-accent, #7b6cd9);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  font-size: 0.85em;
+}
+
+/* ---- Category management (settings) ---- */
+
+.budget-settings-cats {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 0 0.8em;
+  margin-bottom: 1.5em;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+/* Seven controls per category (target, reduce, necessity, minimum, transfer,
+   delete, rename) will not fit on one line. Name on top, controls beneath,
+   both full width — a single nowrap row clipped the later ones off-screen. */
+.budget-cat-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-cat-row:last-child {
+  border-bottom: none;
+}
+
+.budget-cat-text-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.budget-cat-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.budget-cat-usage {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+.budget-cat-btn-col {
+  display: flex;
+  gap: 0.35em;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.budget-cat-text-col { flex: 1 1 100%; min-width: 0; }
+
+.budget-badge-transfer {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.budget-merge-warning {
+  background: var(--background-modifier-error, rgba(224, 92, 92, 0.15));
+  color: var(--text-error, #e05c5c);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  font-size: 0.85em;
+}
+
+.budget-drill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8em;
+  flex-wrap: wrap;
+  margin-bottom: 0.5em;
+}
+
+.budget-drill-head h5 {
+  margin: 0;
+}
+
+/* ---- Action bar ---- */
+
+.budget-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-bottom: 1.4em;
+  padding-bottom: 1.2em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-action-btn {
+  padding: 0.5em 1.15em;
+  border-radius: 20px;
+  font-size: 0.86em;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.budget-action-btn:active { transform: scale(0.97); }
+
+.budget-action-btn:not(.mod-cta) {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.budget-action-btn:not(.mod-cta):hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ---- Debt card ---- */
+
+.budget-debt-card, .budget-progress-card {
+  margin-bottom: 1.2em;
+}
+
+.budget-debt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin-bottom: 0.5em;
+}
+
+.budget-debt-head h4 { margin: 0; }
+/* The total, then Add loan, pushed right together. */
+.budget-debt-head .budget-debt-total { margin-left: auto; }
+.budget-debt-head .budget-debt-add { font-size: 0.85em; }
+
+/* ---- Loans ---- */
+.budget-loan-extra { color: var(--text-accent); }
+.budget-loan-closed { opacity: 0.8; }
+.budget-loan-more { margin: 0.3em 0 0.2em; }
+.budget-loan-more > summary {
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  padding: 0.4em 0;
+}
+.budget-loan-result {
+  font-weight: 600;
+  margin: 0.6em 0 0.2em;
+  font-variant-numeric: tabular-nums;
+}
+.budget-loan-result:empty, .budget-loan-pick:empty { display: none; }
+.budget-loan-pick {
+  margin: 0.4em 0;
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+.budget-loan-pick-title { font-size: 0.85em; color: var(--text-muted); margin-bottom: 0.3em; }
+.budget-loan-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.25em 0;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+/* A quiet, text-like button: "Added by mistake? Delete it". */
+.budget-link-btn {
+  background: none !important;
+  box-shadow: none !important;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.budget-loan-delete { margin-right: auto; }
+
+.budget-debt-total {
+  font-size: 1.15em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-debt-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.6em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+}
+
+.budget-debt-row:last-child { border-bottom: none; }
+
+.budget-debt-text-col { flex: 1; min-width: 160px; }
+
+.budget-debt-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+
+.budget-debt-meta {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+/* Where a card's balance came from: the anchor, then what posted since. Quieter
+   than the meta line above it, because it explains rather than states. */
+.budget-debt-seam {
+  color: var(--text-faint, var(--text-muted));
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card's ledger is far enough behind that the balance is probably
+   incomplete. Warn rather than error — it's stale, not wrong. */
+.budget-debt-stale {
+  color: var(--text-warning, var(--text-accent));
+}
+
+.budget-debt-amt-col {
+  font-size: 1.05em;
+  flex-shrink: 0;
+}
+
+.budget-debt-btn-col {
+  display: flex;
+  gap: 0.4em;
+  flex-shrink: 0;
+}
+
+.budget-badge-warn {
+  background: transparent;
+  border: 1px solid var(--text-error, #e05c5c);
+  color: var(--text-error, #e05c5c);
+  font-weight: 400;
+}
+
+/* The six-month trend can be wider than a phone; scroll it rather than clip it. */
+.budget-trend-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.budget-chart-wrap {
+  margin: 0.5em 0 0.8em;
+}
+
+/* ---- Apply payment modal ---- */
+
+.budget-apply-list {
+  max-height: 45vh;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 0 0.8em;
+  margin-bottom: 0.8em;
+}
+
+.budget-apply-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.5em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-apply-row:last-child { border-bottom: none; }
+
+.budget-apply-label { flex: 1; min-width: 0; }
+
+.budget-apply-meta {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+.budget-apply-total {
+  font-weight: 600;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 0.5em 0.8em;
+}
+
+/* ---- Subscription audit ---- */
+
+.budget-sub-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin-bottom: 0.4em;
+}
+
+.budget-sub-head h4 { margin: 0; }
+
+.budget-sub-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-sub-savings {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 0.5em 0.7em;
+  margin-bottom: 0.6em;
+}
+
+/* Three columns, matching the three actual children: text, amount, controls.
+   The cadence <select> lives INSIDE the controls column, so declaring a
+   separate column for it made the controls overflow across the amount. */
+.budget-sub-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, auto) auto;
+  align-items: center;
+  column-gap: 1em;
+  row-gap: 0.5em;
+  padding: 0.6em 0.5em;
+  margin: 0 -0.5em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .budget-sub-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .budget-sub-amt-col { grid-column: 2; }
+  .budget-sub-btn-col { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+.budget-sub-row:last-child { border-bottom: none; }
+
+.budget-sub-cancel { opacity: 0.6; }
+
+.budget-sub-cancel .budget-sub-name > span:first-child {
+  text-decoration: line-through;
+}
+
+/* A flagged row is dimmed because it's leaving. Once there's finally evidence
+   it actually stopped, it's the row that wants a click — so it comes back up
+   to full strength and picks up an accent edge. */
+.budget-sub-confirmable {
+  opacity: 1;
+  border-left: 2px solid var(--interactive-accent, #7b6cd9);
+  padding-left: 0.6em;
+}
+
+/* Full size on the container so the button inside lands at exactly the same
+   size as its siblings in the row — .budget-btn is 0.82em, and nesting it in
+   the 0.76em meta font would compound the two. The explanation carries the
+   small size itself instead. */
+/* Two-class selector on purpose: .budget-sub-meta is declared twice, the later
+   of the two below this rule, so a single-class selector here loses the
+   font-size on source order alone. */
+.budget-sub-meta.budget-sub-ready {
+  font-size: 1em;
+  color: var(--interactive-accent, #7b6cd9);
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  flex-wrap: wrap;
+  margin-top: 0.3em;
+}
+
+.budget-sub-ready > span { font-size: 0.76em; }
+
+.budget-sub-cta { white-space: nowrap; }
+
+.budget-sub-watch {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.budget-sub-gone {
+  margin-top: 0.8em;
+  padding-top: 0.7em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.budget-sub-text-col { min-width: 0; }
+
+.budget-sub-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+
+.budget-sub-meta {
+  font-size: 0.76em;
+  color: var(--text-muted);
+}
+
+.budget-sub-amt-col {
+  text-align: right;
+  min-width: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-sub-btn-col {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.budget-badge-keep {
+  background: transparent;
+  border: 1px solid var(--text-success, #4caf50);
+  color: var(--text-success, #4caf50);
+  font-weight: 400;
+}
+
+.budget-btn-danger-active {
+  background: var(--background-modifier-error, rgba(224, 92, 92, 0.2));
+  color: var(--text-error, #e05c5c);
+}
+
+.budget-modal-section {
+  margin-top: 1.2em;
+  margin-bottom: 0.2em;
+  font-size: 1em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+
+/* ---- View tabs ---- */
+
+.budget-tabs {
+  display: flex;
+  gap: 0.2em;
+  margin-bottom: 1.6em;
+  padding: 0.3em;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.budget-tabs::-webkit-scrollbar { display: none; }
+
+.budget-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 0.5em 1.1em;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.budget-tab:hover:not(.budget-tab-active) {
+  color: var(--text-normal);
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.budget-tab-active {
+  color: var(--text-normal);
+  font-weight: 600;
+  background: var(--background-primary);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.budget-tab-body {
+  animation: budget-fade 0.12s ease-in;
+}
+
+@keyframes budget-fade {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* ---- Collapsible sections ---- */
+
+.budget-collapsible {
+  margin: 0;
+}
+
+.budget-collapsible-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding: 0.1em 0;
+  user-select: none;
+}
+
+.budget-collapsible-summary::-webkit-details-marker { display: none; }
+
+.budget-collapsible-summary::before {
+  content: "\25B8";
+  color: var(--text-muted);
+  font-size: 0.8em;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.budget-collapsible[open] > .budget-collapsible-summary::before {
+  transform: rotate(90deg);
+}
+
+.budget-collapsible-title {
+  font-weight: 600;
+  font-size: 1.05em;
+}
+
+.budget-collapsible-sub {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+.budget-collapsible-body {
+  margin-top: 0.6em;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* wider viewports: let the two-column grids actually use the space */
+@media (min-width: 1000px) {
+  .budget-grid {
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  }
+}
+
+/* Fixed width + border-box so long labels like "Auto (assumed monthly)"
+   can't stretch the column and knock the money values out of alignment. */
+.budget-cadence-select {
+  width: 128px;
+  max-width: 128px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 20px;
+  padding: 0.3em 0.75em;
+  font-size: 0.78em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.budget-cadence-select:hover {
+  border-color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+
+.budget-badge-manual {
+  background: transparent;
+  border: 1px solid var(--text-accent, #7b6cd9);
+  color: var(--text-accent, #7b6cd9);
+  font-weight: 400;
+}
+
+.budget-sub-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  flex-wrap: wrap;
+}
+
+.budget-raw-samples {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 0.5em 0.8em;
+  margin-bottom: 0.8em;
+  font-size: 0.85em;
+}
+
+.budget-raw-samples summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.budget-raw-samples > div {
+  word-break: break-word;
+  padding: 0.2em 0;
+}
+
+/* The live "what would this pattern catch" line. It sits inside the field's own
+   description now rather than as a separate block above it. */
+.budget-match-count {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.budget-apply-scope {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 0.55em 0.8em;
+  font-size: 0.82em;
+  margin-bottom: 0.7em;
+}
+
+.budget-btn-dismiss {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.budget-btn-dismiss:hover {
+  color: var(--text-error, #e05c5c);
+}
+
+.budget-apply-unknown {
+  opacity: 0.82;
+}
+
+.budget-apply-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  flex-wrap: wrap;
+}
+
+.budget-warning-soft {
+  background: rgba(224, 168, 92, 0.12);
+  border-left: 3px solid var(--text-warning, #e0a85c);
+  color: var(--text-normal);
+  border-radius: 6px;
+  padding: 0.8em 1.2em;
+  margin-bottom: 1.5em;
+}
+
+/* ---- Progress bars (goals + budget targets) ---- */
+
+.budget-goal-row {
+  padding: 0.7em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.budget-goal-row:last-child { border-bottom: none; }
+
+.budget-goal-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8em;
+  margin-bottom: 0.4em;
+}
+
+.budget-goal-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.budget-progress-track {
+  position: relative;
+  display: flex;
+  height: 10px;
+  background: var(--background-modifier-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  background: var(--text-accent, #7b6cd9);
+  border-radius: 999px 0 0 999px;
+  transition: width 0.2s ease;
+}
+
+.budget-progress-done {
+  background: var(--text-success, #4caf50);
+  border-radius: 999px;
+}
+
+.budget-progress-over {
+  background: var(--text-error, #e05c5c);
+  border-radius: 999px 0 0 999px;
+}
+
+.budget-progress-spill {
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--text-error, #e05c5c),
+    var(--text-error, #e05c5c) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.budget-goal-meta {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  margin-top: 0.35em;
+}
+
+.budget-goal-btns {
+  display: flex;
+  gap: 0.4em;
+  margin-top: 0.5em;
+}
+
+.budget-goals-card { margin-bottom: 1.2em; }
+
+.budget-target-input {
+  width: 92px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0.28em 0.5em;
+  font-size: 0.8em;
+}
+
+/* ============================================================
+   Tactile hover states on interactive rows
+   ============================================================ */
+
+.budget-recent-row,
+.budget-sub-row,
+.budget-debt-row,
+.budget-legend-row,
+.budget-goal-row,
+.budget-tx-row,
+.budget-fixed-row,
+.budget-apply-row,
+.budget-rule-row,
+.budget-cat-row {
+  border-radius: 8px;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.budget-recent-row:hover,
+.budget-sub-row:hover,
+.budget-debt-row:hover,
+.budget-legend-row:hover,
+.budget-goal-row:hover,
+.budget-tx-row:hover,
+.budget-fixed-row:hover,
+.budget-apply-row:hover,
+.budget-rule-row:hover,
+.budget-cat-row:hover {
+  background: rgba(128, 128, 128, 0.06);
+  transform: translateY(-1px);
+}
+
+/* rows that already carry side padding shouldn't jump when highlighted */
+.budget-recent-row,
+.budget-debt-row,
+.budget-goal-row,
+.budget-tx-row,
+.budget-fixed-row,
+.budget-rule-row,
+.budget-cat-row,
+.budget-apply-row {
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+  margin-left: -0.5em;
+  margin-right: -0.5em;
+}
+
+.budget-legend-clickable:hover {
+  background: rgba(128, 128, 128, 0.09);
+}
+
+/* ============================================================
+   Chart polish
+   ============================================================ */
+
+/* Depth on the burndown / trend lines only — <line> gridlines and <text>
+   labels are deliberately excluded so they stay crisp. */
+.budget-progress-card .budget-chart-wrap svg path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+.budget-chart-wrap svg rect:not(.budget-chart-hit) {
+  transition: opacity 0.15s ease;
+}
+
+.budget-chart-wrap svg rect:not(.budget-chart-hit):hover {
+  opacity: 0.82;
+}
+
+/* Bar chart bars get a softer lift */
+.budget-card .budget-chart-wrap svg rect:not(.budget-chart-hit) {
+  filter: drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.12));
+}
+
+/* Pie slices: subtle separation and a lift on hover */
+.budget-pie-chart svg path {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform-origin: 100px 100px;
+}
+
+.budget-pie-chart svg path:hover {
+  opacity: 0.88;
+  transform: scale(1.03);
+}
+
+.budget-pie-chart svg {
+  filter: drop-shadow(0px 6px 14px rgba(0, 0, 0, 0.14));
+}
+
+/* Progress bars: rounded, with a soft sheen */
+.budget-progress-track {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.budget-progress-fill {
+  background: linear-gradient(
+    90deg,
+    var(--text-accent, #7b6cd9),
+    color-mix(in srgb, var(--text-accent, #7b6cd9) 65%, #3aa6d8)
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text-accent, #7b6cd9) 40%, transparent);
+}
+
+.budget-progress-done {
+  background: linear-gradient(
+    90deg,
+    var(--text-success, #4caf50),
+    color-mix(in srgb, var(--text-success, #4caf50) 70%, #9ad36f)
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text-success, #4caf50) 40%, transparent);
+}
+
+.budget-progress-over {
+  background: linear-gradient(
+    90deg,
+    var(--text-error, #e05c5c),
+    color-mix(in srgb, var(--text-error, #e05c5c) 70%, #f0a05c)
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text-error, #e05c5c) 35%, transparent);
+}
+
+/* ============================================================
+   Misc refinement
+   ============================================================ */
+
+.budget-badge {
+  letter-spacing: 0.02em;
+}
+
+.budget-range-select,
+.budget-settings-search,
+.budget-target-input {
+  border-radius: 20px;
+  padding-left: 0.85em;
+  padding-right: 0.85em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.budget-range-select:hover,
+.budget-target-input:hover {
+  border-color: var(--text-muted);
+}
+
+.budget-collapsible-summary {
+  border-radius: 8px;
+  padding: 0.35em 0.5em;
+  margin: 0 -0.5em;
+  transition: background 0.15s ease;
+}
+
+.budget-collapsible-summary:hover {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.budget-period-bar {
+  opacity: 0.9;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .budget-recent-row,
+  .budget-sub-row,
+  .budget-debt-row,
+  .budget-legend-row,
+  .budget-goal-row,
+  .budget-tx-row,
+  .budget-fixed-row,
+  .budget-apply-row,
+  .budget-rule-row,
+  .budget-cat-row,
+  .budget-card,
+  .budget-btn,
+  .budget-action-btn,
+  .budget-tab,
+  .budget-pie-chart svg path {
+    transition: none;
+  }
+  .budget-recent-row:hover,
+  .budget-sub-row:hover,
+  .budget-debt-row:hover,
+  .budget-legend-row:hover,
+  .budget-goal-row:hover,
+  .budget-tx-row:hover,
+  .budget-fixed-row:hover,
+  .budget-apply-row:hover,
+  .budget-rule-row:hover,
+  .budget-cat-row:hover {
+    transform: none;
+  }
+  .budget-tab-body { animation: none; }
+}
+
+/* ---- Savings goal contributions ---- */
+
+.budget-contrib-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7em;
+  padding: 0.45em 0.5em;
+  margin: 0 -0.5em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.budget-contrib-row:last-child { border-bottom: none; }
+
+.budget-contrib-row:hover {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.budget-contrib-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.budget-contrib-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  flex-wrap: wrap;
+  font-size: 0.76em;
+  color: var(--text-muted);
+}
+
+.budget-contrib-btns {
+  display: flex;
+  gap: 0.35em;
+  flex-shrink: 0;
+}
+
+.budget-goal-row .budget-collapsible {
+  margin-top: 0.6em;
+}
+
+.budget-goal-row .budget-collapsible-body {
+  max-height: 40vh;
+}
+
+/* ---- Smart target tuner ---- */
+
+.budget-tuner-baseline {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin-bottom: 0.2em;
+}
+
+.budget-tuner-preview {
+  background: var(--background-secondary);
+  border-radius: 10px;
+  padding: 1em 1.2em;
+  margin: 1em 0 0.6em;
+  text-align: center;
+}
+
+.budget-tuner-target {
+  font-size: 1.7em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.budget-tuner-saved {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  margin-top: 0.3em;
+}
+
+.budget-tuner-slider-wrap {
+  padding: 0.4em 0.2em 0.2em;
+}
+
+.budget-tuner-slider {
+  width: 100%;
+  accent-color: var(--text-accent, #7b6cd9);
+  cursor: pointer;
+}
+
+.budget-tuner-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72em;
+  color: var(--text-muted);
+  margin-top: 0.2em;
+}
+
+/* Tune button sits inline with the category name */
+.budget-goal-name .budget-btn {
+  font-size: 0.72em;
+  padding: 0.2em 0.7em;
+}
+
+.budget-goal-meta {
+  display: flex;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+/* ============================================================
+   Pie sizing — the SVGs no longer carry width/height attributes
+   so they can scale, which means this rule is load-bearing on
+   DESKTOP too, not just mobile.
+   ============================================================ */
+
+.budget-pie-chart svg {
+  display: block;
+  width: 232px;
+  height: 232px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Narrow layouts (phones, and narrow desktop split panes)
+   ============================================================ */
+
+@media (max-width: 700px) {
+  .budget-dashboard {
+    padding: 1em 0.75em 3em;
+  }
+
+  .budget-title {
+    font-size: 1.12em;
+    letter-spacing: 0.18em;
+    gap: 0.7em;
+  }
+  .budget-title::after { margin-left: -0.18em; }
+
+  /* One column — two 320px cards can't sit side by side here */
+  .budget-grid {
+    grid-template-columns: 1fr;
+    gap: 0.9em;
+  }
+
+  .budget-card {
+    padding: 1em 0.9em;
+    border-radius: 10px;
+  }
+
+  /* Hero stacks instead of squeezing two big numbers onto one line */
+  .budget-hero {
+    flex-direction: column;
+    gap: 1.1em;
+    padding: 1.2em 1.1em;
+  }
+  .budget-hero-number { font-size: 2.2em; }
+  .budget-hero-number-sm { font-size: 1.35em; }
+
+  /* Tabs scroll horizontally rather than compressing to unreadable slivers */
+  .budget-tabs {
+    gap: 0.15em;
+    padding: 0.25em;
+    -webkit-overflow-scrolling: touch;
+  }
+  .budget-tab {
+    flex: 0 0 auto;
+    padding: 0.55em 0.85em;
+    font-size: 0.85em;
+  }
+
+  /* Action bar becomes a swipeable strip */
+  .budget-action-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.9em;
+    margin-bottom: 1em;
+  }
+  .budget-action-bar::-webkit-scrollbar { display: none; }
+  .budget-action-btn { flex: 0 0 auto; }
+
+  /* Pie and legend stack */
+  .budget-pie-wrap {
+    flex-direction: column;
+    gap: 1em;
+    align-items: stretch;
+  }
+  .budget-pie-chart {
+    display: flex;
+    justify-content: center;
+  }
+  .budget-pie-chart svg {
+    width: min(200px, 58vw);
+    height: auto;
+  }
+  .budget-pie-legend { min-width: 0; }
+
+  /* SVG chart labels are unreadable at 10px on a phone */
+  .budget-chart-wrap svg text { font-size: 13px; }
+
+  /* Rows stack: label on top, controls beneath, full width */
+  .budget-sub-row {
+    grid-template-columns: 1fr auto;
+    column-gap: 0.6em;
+  }
+  .budget-sub-btn-col {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .budget-cadence-select,
+  .budget-debt-row,
+  .budget-recent-row,
+  .budget-fixed-row,
+  .budget-rule-row,
+  .budget-cat-row,
+  .budget-apply-row,
+  .budget-contrib-row,
+  .budget-tx-row {
+    flex-wrap: wrap;
+    row-gap: 0.45em;
+  }
+
+  .budget-debt-btn-col,
+  .budget-rule-btn-col,
+  .budget-cat-btn-col,
+  .budget-goal-btns,
+  .budget-contrib-btns {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .budget-recent-main,
+  .budget-tx-text,
+  .budget-rule-text-col,
+  .budget-cat-text-col,
+  .budget-apply-label {
+    flex-basis: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .budget-tx-text { white-space: normal; overflow: visible; }
+
+  .budget-target-input { width: 100%; }
+
+  .budget-period-bar,
+  .budget-sub-head,
+  .budget-debt-head,
+  .budget-pie-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35em;
+  }
+
+  .budget-range-select { width: 100%; }
+
+  .budget-collapsible-body { max-height: none; }
+  .budget-settings-rules,
+  .budget-settings-cats,
+  .budget-apply-list { max-height: 60vh; }
+}
+
+/* ============================================================
+   Touch devices — Obsidian sets .is-mobile on <body>
+   ============================================================ */
+
+body.is-mobile .budget-dashboard,
+.budget-mobile {
+  /* Comfortable tap targets: 40px is the practical floor */
+}
+
+body.is-mobile .budget-btn,
+.budget-mobile .budget-btn {
+  min-height: 34px;
+  padding: 0.45em 0.9em;
+  font-size: 0.85em;
+}
+
+body.is-mobile .budget-action-btn,
+.budget-mobile .budget-action-btn {
+  min-height: 40px;
+  font-size: 0.9em;
+}
+
+body.is-mobile .budget-tab,
+.budget-mobile .budget-tab {
+  min-height: 40px;
+}
+
+body.is-mobile .budget-cadence-select,
+body.is-mobile .budget-range-select,
+body.is-mobile .budget-target-input,
+body.is-mobile .budget-settings-search,
+.budget-mobile .budget-cadence-select,
+.budget-mobile .budget-range-select,
+.budget-mobile .budget-target-input {
+  min-height: 36px;
+  /* 16px prevents iOS from zooming the viewport on focus */
+  font-size: 16px;
+}
+
+/* Hover lift is meaningless on touch and causes sticky highlight states */
+body.is-mobile .budget-recent-row:hover,
+body.is-mobile .budget-sub-row:hover,
+body.is-mobile .budget-debt-row:hover,
+body.is-mobile .budget-legend-row:hover,
+body.is-mobile .budget-goal-row:hover,
+body.is-mobile .budget-tx-row:hover,
+body.is-mobile .budget-fixed-row:hover,
+body.is-mobile .budget-apply-row:hover,
+body.is-mobile .budget-rule-row:hover,
+body.is-mobile .budget-cat-row:hover,
+body.is-mobile .budget-contrib-row:hover,
+body.is-mobile .budget-card:hover {
+  transform: none;
+  background: inherit;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Tapping a legend row should still read as pressable */
+body.is-mobile .budget-legend-clickable:active {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+body.is-mobile .budget-pie-chart svg {
+  filter: none; /* drop-shadows are expensive to composite on phones */
+}
+
+body.is-mobile .budget-tuner-slider {
+  height: 28px; /* easier to grab */
+}
+
+/* Modals get cramped on small screens */
+body.is-mobile .modal .budget-apply-list,
+body.is-mobile .modal .budget-settings-rules {
+  max-height: 50vh;
+}
+
+/* Very small phones */
+@media (max-width: 400px) {
+  .budget-dashboard { padding: 0.8em 0.55em 3em; }
+  .budget-hero-number { font-size: 1.9em; }
+  .budget-card { padding: 0.85em 0.75em; }
+  .budget-tuner-target { font-size: 1.4em; }
+}
+
+/* ---- Launcher code block (```budget```) ---- */
+
+.budget-launcher {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 1.1em 1.2em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.budget-launcher-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 22px;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.budget-launcher-summary {
+  display: flex;
+  gap: 1.5em;
+  flex-wrap: wrap;
+  margin-top: 1em;
+}
+
+.budget-launcher-stat {
+  min-width: 0;
+}
+
+.budget-launcher-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.budget-launcher-value {
+  font-size: 1.7em;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-launcher-value-sm {
+  font-size: 1.05em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+body.is-mobile .budget-launcher-summary {
+  gap: 1.1em;
+}
+
+/* ============================================================
+   Relocation Mode
+   ============================================================ */
+
+.budget-reloc-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2em;
+  flex-wrap: wrap;
+  background:
+    linear-gradient(135deg, rgba(224, 168, 92, 0.16), rgba(224, 92, 92, 0.1)),
+    var(--background-secondary);
+  border: 1px solid color-mix(in srgb, var(--text-warning, #e0a85c) 45%, transparent);
+  border-left: 5px solid var(--text-warning, #e0a85c);
+  border-radius: 12px;
+  padding: 1.1em 1.4em;
+  margin-bottom: 1.1em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.budget-reloc-imminent {
+  border-color: color-mix(in srgb, var(--text-error, #e05c5c) 55%, transparent);
+  border-left-color: var(--text-error, #e05c5c);
+  background:
+    linear-gradient(135deg, rgba(224, 92, 92, 0.2), rgba(224, 92, 92, 0.08)),
+    var(--background-secondary);
+}
+
+.budget-reloc-past {
+  border-left-color: var(--text-muted);
+  background: var(--background-secondary);
+  opacity: 0.9;
+}
+
+.budget-reloc-left { flex: 1; min-width: 220px; }
+
+.budget-reloc-title {
+  font-size: 1.05em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.budget-reloc-sub {
+  font-size: 0.84em;
+  color: var(--text-muted);
+  margin-top: 0.25em;
+}
+
+.budget-reloc-count { text-align: right; flex-shrink: 0; }
+
+.budget-reloc-days {
+  font-size: 2.6em;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-warning, #e0a85c);
+}
+
+.budget-reloc-imminent .budget-reloc-days { color: var(--text-error, #e05c5c); }
+.budget-reloc-past .budget-reloc-days { color: var(--text-muted); }
+
+.budget-reloc-days-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 0.15em;
+}
+
+/* ---- pinned moving fund ---- */
+
+.budget-pinned-goal {
+  border: 1px solid color-mix(in srgb, var(--text-warning, #e0a85c) 40%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.2em;
+}
+
+.budget-pinned-track {
+  height: 16px;
+  margin-top: 0.15em;
+}
+
+/* Striped so the moving fund never reads as just another sinking fund */
+.budget-pinned-fill {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--text-warning, #e0a85c),
+    var(--text-warning, #e0a85c) 9px,
+    color-mix(in srgb, var(--text-warning, #e0a85c) 62%, #000) 9px,
+    color-mix(in srgb, var(--text-warning, #e0a85c) 62%, #000) 18px
+  );
+  background-color: var(--text-warning, #e0a85c);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--text-warning, #e0a85c) 50%, transparent);
+  animation: budget-stripe 1.1s linear infinite;
+}
+
+.budget-pinned-done {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--text-success, #4caf50),
+    var(--text-success, #4caf50) 9px,
+    color-mix(in srgb, var(--text-success, #4caf50) 65%, #000) 9px,
+    color-mix(in srgb, var(--text-success, #4caf50) 65%, #000) 18px
+  );
+  background-color: var(--text-success, #4caf50);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--text-success, #4caf50) 45%, transparent);
+}
+
+@keyframes budget-stripe {
+  from { background-position: 0 0; }
+  to   { background-position: 25px 0; }
+}
+
+.budget-badge-pinned {
+  background: transparent;
+  border: 1px solid var(--text-warning, #e0a85c);
+  color: var(--text-warning, #e0a85c);
+  font-weight: 600;
+}
+
+/* An empty state is a note, not a card's worth of content. Left at full card
+   padding it was the second thing on the page and the largest thing saying
+   nothing. */
+.budget-reloc-hint {
+  border-style: dashed;
+  margin-bottom: 1.2em;
+  padding: 0.85em 1.2em;
+  box-shadow: none;
+}
+
+.budget-reloc-hint p {
+  margin: 0;
+}
+
+.budget-reloc-hint p + button {
+  margin-top: 0.7em;
+}
+
+@media (max-width: 700px) {
+  .budget-reloc-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7em;
+  }
+  .budget-reloc-count { text-align: left; }
+  .budget-reloc-days { font-size: 2.2em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-pinned-fill { animation: none; }
+}
+
+.budget-hero-basis {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  font-size: 0.74em;
+  color: var(--text-muted);
+  margin-top: 0.4em;
+  flex-wrap: wrap;
+}
+
+/* Which balance "on hand" is and where it came from: its own line under the
+   basis and its button. */
+.budget-hero-source {
+  flex-basis: 100%;
+  order: 1;
+  font-size: 0.95em;
+  color: var(--text-faint);
+  margin-top: -0.2em;
+}
+
+.budget-basis-btn {
+  padding: 0.15em 0.7em;
+  border-radius: 20px;
+  font-size: 0.95em;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.budget-basis-btn:hover {
+  color: var(--text-normal);
+  border-color: var(--text-muted);
+}
+
+/* Delete actions read as destructive without shouting */
+.budget-btn-danger {
+  color: var(--text-error, #e05c5c);
+  border-color: color-mix(in srgb, var(--text-error, #e05c5c) 30%, var(--background-modifier-border));
+}
+
+.budget-btn-danger:hover {
+  background: color-mix(in srgb, var(--text-error, #e05c5c) 14%, transparent);
+  border-color: var(--text-error, #e05c5c);
+  color: var(--text-error, #e05c5c);
+}
+
+/* ---- smart discretionary buffer ---- */
+
+.budget-buffer-text { display: flex; flex-direction: column; gap: 0.12em; }
+
+.budget-buffer-sub {
+  font-size: 0.74em;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* ============================================================
+   Trend chart drill-down
+   ============================================================ */
+
+.budget-trend-bar {
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.budget-trend-bar:hover {
+  opacity: 0.85;
+  filter: brightness(1.25);
+}
+
+.budget-trend-bar-sel {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--text-accent, #7b6cd9) 65%, transparent));
+}
+
+/* The sandwich: a month opened inside the trend chart (desktop). Months that
+   have faded out can't be clicked through, and nothing here transitions on
+   its own — the chart animates it frame by frame. */
+.budget-trend-chart { overflow: visible; }
+.budget-trend-bar:focus { outline: none; }
+.budget-trend-bar:focus-visible { outline: 2px solid var(--interactive-accent, #7b6cd9); outline-offset: 2px; }
+.budget-trend-open .budget-trend-month:not(.is-open),
+.budget-trend-open .budget-trend-grid { pointer-events: none; }
+.budget-trend-open .budget-trend-bar,
+.budget-trend-slice { transition: none !important; }
+.budget-trend-sandwich { cursor: pointer; }
+.budget-trend-sandwich:focus { outline: none; }
+.budget-trend-sandwich:focus-visible .budget-trend-slice { stroke: var(--interactive-accent, #7b6cd9); stroke-width: 1.5; }
+/* The trend chart's text scales with the chart; keep it crisp and even. */
+.budget-trend-chart text {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+.budget-trend-tick { pointer-events: none; opacity: 0.7; }
+.budget-trend-slice-name,
+.budget-trend-slice-figure,
+.budget-trend-swatch-mark { pointer-events: none; }
+.budget-trend-label-hit { cursor: pointer; }
+/* Pointing at a layer or its label lights both; the rest step back. */
+.budget-trend-sandwich:has(.is-hot) .budget-trend-layer:not(.is-hot),
+.budget-trend-sandwich:has(.is-hot) .budget-trend-slice:not(.is-hot) { opacity: 0.45; }
+.budget-trend-layer.is-hot .budget-trend-tick { opacity: 1; stroke-width: 2; }
+.budget-trend-layer.is-hot .budget-trend-label-hit { fill: var(--background-modifier-hover, rgba(0, 0, 0, 0.05)); }
+.budget-trend-layer { transition: opacity 0.12s ease; }
+
+/* Phones and narrow panes: the panel zooms up from the chart it came out of */
+.budget-trend-panel {
+  margin-top: 0.9em;
+  padding: 1em 1.1em;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  transform-origin: top center;
+  animation: budget-zoom-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes budget-zoom-in {
+  from { opacity: 0; transform: scale(0.94) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.budget-trend-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  flex-wrap: wrap;
+  margin-bottom: 0.8em;
+}
+
+.budget-trend-panel-title {
+  font-size: 1.1em;
+  font-weight: 700;
+  flex: 1;
+  min-width: 120px;
+}
+
+/* Stacked proportion ribbon */
+.budget-ribbon {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 1em;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.budget-ribbon-seg {
+  height: 100%;
+  animation: budget-grow-x 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition: filter 0.15s ease;
+}
+
+.budget-ribbon-seg:hover { filter: brightness(1.3); }
+
+@keyframes budget-grow-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.budget-ribbon-seg { transform-origin: left center; }
+
+/* Itemised rows */
+.budget-trend-rows { display: flex; flex-direction: column; gap: 0.1em; }
+
+.budget-trend-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) minmax(0, 2fr) auto 42px;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.3em 0;
+  animation: budget-fade-up 0.32s ease backwards;
+}
+
+@keyframes budget-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.budget-trend-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  min-width: 0;
+  font-size: 0.86em;
+}
+
+.budget-trend-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-trend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.budget-trend-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.budget-trend-fill {
+  height: 100%;
+  border-radius: 999px;
+  transform-origin: left center;
+  animation: budget-grow-x 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.budget-trend-amount {
+  font-size: 0.86em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.budget-trend-pct {
+  font-size: 0.76em;
+  text-align: right;
+}
+
+@media (max-width: 700px) {
+  .budget-trend-row {
+    grid-template-columns: minmax(0, 1fr) auto 40px;
+    row-gap: 0.25em;
+  }
+  .budget-trend-track { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-trend-panel,
+  .budget-ribbon-seg,
+  .budget-trend-row,
+  .budget-trend-fill { animation: none; }
+  .budget-trend-bar { transition: none; }
+}
+
+/* Budget target rows (Insights): name and Tune over spend vs target; a quiet
+   line saying what the target asks; the bar; then month-over-month on the left
+   and room left on the right. */
+.budget-target-amount { font-variant-numeric: tabular-nums; }
+.budget-target-over { color: var(--text-error, #e05c5c); }
+
+.budget-target-aim {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  margin-bottom: 0.35em;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-target-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2em 1em;
+  margin-top: 0.3em;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Room left stays on the right even when there's no month to compare with. */
+.budget-target-room { margin-left: auto; text-align: right; }
+.budget-target-up { color: var(--text-error, #e05c5c); }
+.budget-target-down { color: var(--text-success, #4caf50); }
+
+@media (max-width: 700px) {
+  .budget-target-row .budget-goal-top { flex-wrap: wrap; row-gap: 0.25em; }
+  .budget-target-status { font-size: 0.82em; }
+  .budget-target-status > span { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* ---- variable necessities ---- */
+
+.budget-necessity-row { align-items: flex-start; }
+
+.budget-btn-necessity {
+  border-color: var(--text-warning, #e0a85c);
+  color: var(--text-warning, #e0a85c);
+  font-weight: 600;
+}
+
+.budget-min-input {
+  width: 74px;
+}
+
+
+/* Same treatment for the fixed-expense and account rows, which reuse these
+   classes and gained Edit/Delete controls. */
+.budget-settings-cats { overflow-x: hidden; }
+
+/* ============================================================
+   Portfolio — long-term / invested assets (informational only)
+   ============================================================ */
+
+.budget-portfolio-modal { max-width: 700px; width: 92vw; }
+
+.budget-portfolio-textarea {
+  width: 100%;
+  min-height: 220px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  padding: 0.7em 0.9em;
+  font-family: var(--font-monospace, monospace);
+  font-size: 0.8em;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.budget-portfolio-result { margin: 0.8em 0 0.2em; }
+
+.budget-portfolio-report {
+  border-radius: 8px;
+  padding: 0.8em 1em;
+  font-size: 0.86em;
+  border-left: 3px solid var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.budget-portfolio-report-title {
+  font-weight: 700;
+  margin-bottom: 0.3em;
+}
+
+.budget-portfolio-report-line {
+  color: var(--text-muted);
+  padding: 0.08em 0;
+}
+
+.budget-portfolio-card { display: flex; flex-direction: column; }
+
+.budget-portfolio-value {
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-top: 0.3em;
+}
+
+.budget-portfolio-sub {
+  margin: 0.9em 0 0.35em;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.budget-portfolio-reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8em;
+  flex-wrap: wrap;
+}
+
+body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
+
+/* Review step: a read it wasn't sure of, laid out to check before saving. */
+.budget-portfolio-review { border-left-color: var(--color-yellow, #d9a53b); }
+.budget-portfolio-review .budget-portfolio-report-line { color: var(--text-normal); }
+.budget-pf-review-form {
+  margin-top: 0.7em;
+  padding-top: 0.4em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.budget-pf-review-form .setting-item { padding: 0.45em 0; }
+.budget-pf-review-form .setting-item-control { gap: 0.4em; }
+.budget-pf-found .setting-item-description { color: var(--color-green, var(--text-muted)); }
+.budget-pf-missing .setting-item-name { color: var(--text-muted); }
+.budget-pf-more { margin-top: 0.3em; }
+.budget-pf-more > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  padding: 0.35em 0;
+}
+.budget-pf-kind { font-size: 0.85em; margin-top: 0.1em; }
+.budget-hidden { display: none !important; }
+
+/* ---- Portfolio hero ----
+   Intentionally distinct from the cash hero. These balances are not spendable
+   and must never read as part of the pay-period figures. */
+
+.budget-pf-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1.6em;
+  flex-wrap: wrap;
+  padding: 1.4em 1.6em;
+  margin-bottom: 1.2em;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(90, 140, 200, 0.16), rgba(90, 140, 200, 0.04)),
+    var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 5px solid color-mix(in srgb, var(--text-accent, #7b6cd9) 70%, #3aa6d8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 6px 18px rgba(0, 0, 0, 0.09);
+}
+
+.budget-pf-hero-main { flex: 1 1 280px; min-width: 0; }
+
+.budget-pf-hero-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  flex-wrap: wrap;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.budget-pf-badge {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.budget-pf-hero-value {
+  font-size: 2.7em;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin: 0.1em 0 0.15em;
+}
+
+.budget-pf-hero-sub {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+/* Share of total per account */
+.budget-pf-split {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 0.9em 0 0.7em;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.budget-pf-split-seg {
+  height: 100%;
+  transition: filter 0.15s ease;
+}
+
+.budget-pf-split-seg:hover { filter: brightness(1.25); }
+
+.budget-pf-legend {
+  display: flex;
+  gap: 1.4em;
+  flex-wrap: wrap;
+}
+
+.budget-pf-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: 0.82em;
+}
+
+.budget-pf-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.budget-pf-legend-name { color: var(--text-muted); }
+
+.budget-pf-legend-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-pf-hero-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5em;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.budget-pf-import {
+  padding: 0.65em 1.5em;
+  border-radius: 22px;
+  font-size: 0.92em;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--text-accent, #7b6cd9), color-mix(in srgb, var(--text-accent, #7b6cd9) 55%, #3aa6d8));
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--text-accent, #7b6cd9) 35%, transparent);
+  transition: filter 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.budget-pf-import:hover { filter: brightness(1.08); }
+.budget-pf-add { font-size: 0.85em; }
+.budget-pf-import:active { transform: scale(0.97); }
+
+@media (max-width: 700px) {
+  .budget-pf-hero {
+    flex-direction: column;
+    gap: 1em;
+    padding: 1.1em 1.1em;
+  }
+  .budget-pf-hero-value { font-size: 2.2em; }
+  .budget-pf-hero-side {
+    align-items: stretch;
+    text-align: left;
+    width: 100%;
+  }
+  .budget-pf-import, .budget-pf-add { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-pf-split-seg, .budget-pf-import { transition: none; }
+}
+
+
+/* Settings sections that hold lists. Collapsed by default so the handful of
+   settings you actually tune stay above the fold, with a count in the summary
+   so you can tell what is inside without opening it. */
+.budget-settings-section {
+  margin: 0.9em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-secondary);
+}
+
+.budget-settings-section > .budget-collapsible-summary {
+  padding: 0.7em 0.9em;
+  font-size: var(--font-ui-medium, 1em);
+  font-weight: 600;
+}
+
+.budget-settings-section > .budget-collapsible-body {
+  padding: 0 0.9em 0.8em;
+}
+
+
+/* "N payments still need matching" — a review item, not an emergency, so it
+   reuses the existing soft-warning surface rather than introducing a colour.
+   Laid out so a long explanation never squeezes the button off a phone screen. */
+.budget-review-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  justify-content: space-between;
+}
+
+.budget-review-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.budget-review-sub {
+  margin-top: 0.2em;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Comfortable on a phone, per the rest of the plugin's touch targets. */
+.budget-review-btn {
+  min-height: 40px;
+  padding-inline: 1em;
+  flex: 0 0 auto;
+}
+
+/* One-line "what kind of thing is this card" note under a card heading. */
+.budget-card-sub {
+  margin: -0.2em 0 0.7em;
+  font-size: 0.82em;
+  line-height: 1.4;
+}
+
+/* The match list reuses the apply-payment rows; it only needs its intro to
+   breathe and its rows to stay scannable when a merchant name is long. */
+.budget-match-modal > p {
+  line-height: 1.5;
+}
+
+.budget-match-modal .budget-apply-row {
+  gap: 0.5em;
+}
+
+.budget-match-modal .budget-apply-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- layout primitives introduced by the Overview consolidation ---- */
+
+/* A card that spans the whole grid rather than one of its columns. */
+.budget-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* Two peers side by side that stack rather than squash. Used for the pair of
+   places a surplus can go, which are one decision and so want one card. */
+.budget-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.6em;
+}
+
+.budget-split > div > h5 {
+  margin: 0 0 0.6em;
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.budget-split > div > ul,
+.budget-split > div > p {
+  margin-top: 0;
+}
+
+/* A second heading inside a card that already has one — projected necessities
+   under subscriptions. The rule above it does the work of the card edge it
+   used to have. */
+.budget-nested-head {
+  margin-top: 1.5em;
+  padding-top: 1.1em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* A two-way view switch. A pair of plain buttons read as two separate actions;
+   one joined control reads as one choice with two states. */
+.budget-segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.budget-segment {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.86em;
+  font-weight: 600;
+  padding: 0.35em 1.1em;
+  border-radius: 999px;
+  line-height: 1.4;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.budget-segment:hover {
+  color: var(--text-normal);
+}
+
+/* The strategy switch is a primary control, not a view filter tucked into a
+   card header, so it gets a size to match. It sits at the right-hand end of the
+   action bar, which otherwise ran out of buttons a third of the way across. */
+.budget-strategy-wrap {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+}
+
+.budget-segmented-lg {
+  padding: 4px;
+  gap: 3px;
+}
+
+.budget-segmented-lg .budget-segment {
+  font-size: 0.95em;
+  padding: 0.5em 1.6em;
+}
+
+/* On a phone the action bar is a horizontal scroller, so a control parked at its
+   right-hand end would be off-screen until you thought to swipe for it. The
+   switch takes a row of its own under the buttons instead — which is why the bar
+   is allowed to wrap again here, with the buttons still nowrap inside their own
+   scrolling track. */
+@media (max-width: 700px) {
+  .budget-action-bar {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .budget-action-btn { flex: 0 0 auto; }
+
+  .budget-strategy-wrap {
+    flex: 0 0 100%;
+    margin-left: 0;
+    margin-top: 0.6em;
+  }
+  .budget-segmented-lg { display: flex; width: 100%; }
+  .budget-segmented-lg .budget-segment {
+    flex: 1;
+    padding-inline: 0.6em;
+    min-height: 40px;
+  }
+}
+
+.budget-segment-on,
+.budget-segment-on:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================================
+   Form inputs — date pickers, money fields, live field notes
+   ============================================================ */
+
+/* Native pickers draw their own calendar icon and popup; color-scheme makes
+   both follow the theme instead of showing a black icon on a dark field. */
+.theme-light .budget-date-input { color-scheme: light; }
+.theme-dark .budget-date-input { color-scheme: dark; }
+
+.budget-date-input {
+  min-width: 10.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.budget-date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+.budget-money-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-money-input.budget-input-invalid,
+.budget-money-input.budget-input-invalid:focus {
+  border-color: var(--text-error, #e05c5c);
+  box-shadow: 0 0 0 1px var(--text-error, #e05c5c);
+}
+
+/* One line under a field's description. flex-basis lets it take its own row
+   when the host is a wrapping flex container (the category row buttons). */
+.budget-field-note {
+  display: block;
+  flex-basis: 100%;
+  margin-top: 0.3em;
+  font-size: 0.92em;
+  line-height: 1.4;
+}
+
+.budget-field-note.budget-field-note-warn {
+  color: var(--text-error, #e05c5c);
+  font-weight: 500;
+}
+
+/* ============================================================
+   Debt chart hover
+   ============================================================ */
+
+.budget-debt-chart-wrap { position: relative; }
+
+/* Vertical drags still scroll the page; horizontal ones scrub the chart. */
+.budget-debt-chart {
+  display: block;
+  touch-action: pan-y;
+  border-radius: 6px;
+}
+
+.budget-debt-chart:focus { outline: none; }
+
+.budget-debt-chart:focus-visible {
+  outline: 2px solid var(--interactive-accent, #7b6cd9);
+  outline-offset: 3px;
+}
+
+.budget-chart-hit { cursor: crosshair; }
+
+.budget-chart-tip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  padding: 0.4em 0.7em;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.budget-chart-tip[hidden] { display: none; }
+
+/* The number is what the reader came for, so it leads. */
+.budget-chart-tip-value {
+  font-weight: 700;
+  font-size: 1em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-chart-tip-date {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   Transactions tab — label inbox
+   ============================================================ */
+
+/* Recent transactions is the tab's main content now, full width. */
+.budget-recent-card { margin-bottom: 1.2em; }
+
+.budget-inbox { margin-bottom: 1.2em; }
+
+/* The notification. Neutral surface, one red dot — an unread count, not an
+   alarm; the rest of the plugin keeps bookkeeping calm, and so does this. */
+.budget-inbox-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6em 1.1em;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-normal);
+  background: var(--background-primary-alt, var(--background-secondary));
+  border: 1px solid rgba(var(--color-red-rgb, 233, 49, 71), 0.35);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, border-radius 0.28s ease;
+}
+
+.budget-inbox-badge:hover {
+  background: rgba(var(--color-red-rgb, 233, 49, 71), 0.07);
+  border-color: rgba(var(--color-red-rgb, 233, 49, 71), 0.55);
+}
+
+.budget-inbox-badge:focus-visible {
+  outline: 2px solid var(--interactive-accent, #7b6cd9);
+  outline-offset: 2px;
+}
+
+.budget-inbox-dot {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-red, #e93147);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 3px rgba(var(--color-red-rgb, 233, 49, 71), 0.18);
+  animation: budget-inbox-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes budget-inbox-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.budget-inbox-text { flex: 1 1 auto; min-width: 0; }
+
+.budget-inbox-action {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* A drawn chevron: points down closed, up open. */
+.budget-inbox-chevron {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin: 0 0.2em 0.25em 0;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.28s ease, margin 0.28s ease;
+}
+
+.budget-inbox-open .budget-inbox-chevron {
+  transform: rotate(-135deg);
+  margin-bottom: -0.2em;
+}
+
+/* Open, the badge and the panel read as one surface that grew downward. */
+.budget-inbox-open .budget-inbox-badge {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* The slide. Animating grid rows from 0fr to 1fr reaches the content's real
+   height with no measuring, and because the panel is in the page flow the card
+   below is pushed down with it. */
+.budget-inbox-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.budget-inbox-open .budget-inbox-panel { grid-template-rows: 1fr; }
+
+/* Hidden once closed — not just clipped — so its buttons drop out of the tab
+   order and screen readers. The delay lets the close finish sliding first. */
+.budget-inbox-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s linear 0.3s;
+}
+
+.budget-inbox-open .budget-inbox-panel-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.budget-inbox-list {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-color: rgba(var(--color-red-rgb, 233, 49, 71), 0.35);
+  padding-top: 0.6em;
+  padding-bottom: 0.6em;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.22s ease, transform 0.3s ease;
+}
+
+.budget-inbox-open .budget-inbox-list {
+  opacity: 1;
+  transform: none;
+}
+
+.budget-inbox-label-btn { min-height: 32px; }
+
+/* Possible transfers between your own accounts: both halves, then the two
+   answers under them. */
+.budget-transfer-intro { font-size: 0.85em; margin: 0 0 0.6em; }
+.budget-transfer-all { margin-bottom: 0.6em; }
+.budget-transfer-pair {
+  padding: 0.35em 0 0.6em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.budget-transfer-pair:last-of-type { border-bottom: none; }
+.budget-transfer-half.budget-recent-row { border-bottom: none; padding: 0.2em 0; }
+.budget-transfer-btns { margin-top: 0.3em; }
+
+/* Confirmed transfers, when shown, sit back from the rest. */
+.budget-recent-transfer { opacity: 0.6; }
+.budget-recent-hidden {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-top: 0.5em;
+  font-size: 0.85em;
+}
+
+/* Savings transfers waiting for a goal: the goal buttons wrap onto their own
+   line under the transfer, since there can be several. */
+.budget-goal-inbox { margin-top: 0.4em; }
+.budget-goal-inbox-row { flex-wrap: wrap; }
+.budget-goal-inbox-btns {
+  flex-basis: 100%;
+  margin-top: 0.1em;
+}
+.budget-goal-link { margin-top: 0.15em; }
+
+.budget-inbox-more {
+  margin: 0.6em 0 0.1em;
+  font-size: 0.85em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-inbox-panel,
+  .budget-inbox-panel-inner,
+  .budget-inbox-list,
+  .budget-inbox-chevron,
+  .budget-inbox-badge { transition: none; }
+  .budget-inbox-dot { animation: none; }
+}
+
+/* ============================================================
+   Bank sync (SimpleFIN)
+   ============================================================ */
+
+/* Connected: the accent, as an outline, so it doesn't compete with Enter
+   Paycheck as the bar's one filled button. */
+.budget-action-btn.budget-sync-on {
+  color: var(--interactive-accent, #7b6cd9);
+  border-color: var(--interactive-accent, #7b6cd9);
+}
+
+.budget-action-btn.budget-sync-on:hover {
+  background: rgba(var(--interactive-accent-rgb, 123, 108, 217), 0.1);
+}
+
+/* Not set up: still clickable (it goes to Settings), so dimmed rather than
+   disabled — a disabled button can't be pressed or explain itself. */
+.budget-action-btn.budget-sync-off {
+  opacity: 0.45;
+}
+
+.budget-action-btn.budget-sync-off:hover,
+.budget-action-btn.budget-sync-off:focus-visible {
+  opacity: 0.8;
+}
+
+.budget-action-btn.budget-sync-busy,
+.budget-action-btn.budget-sync-busy:hover {
+  opacity: 0.7;
+  cursor: progress;
+  background: transparent;
+}
+
+/* The label and two invisible copies of both labels share one grid cell, so
+   the button is always as wide as its longer label and the bar never shifts. */
+.budget-action-btn.budget-sync-btn {
+  display: inline-grid;
+  place-items: center;
+}
+
+.budget-sync-btn > span { grid-area: 1 / 1; }
+.budget-sync-sizer { visibility: hidden; }
+
+.budget-sync-settings { margin-bottom: 1.2em; }
+
+.budget-sync-token { min-width: 16em; }
+
+.budget-sync-unlinked ul {
+  margin: 0.3em 0 0;
+  padding-left: 1.3em;
+  font-size: 0.9em;
+}
+
+/* Arriving from the dashboard's dimmed Sync button: one soft pulse so the eye
+   lands on the right section. */
+.budget-settings-flash {
+  border-radius: 10px;
+  animation: budget-settings-flash 1.6s ease-out;
+}
+
+@keyframes budget-settings-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--interactive-accent-rgb, 123, 108, 217), 0.0); background: rgba(var(--interactive-accent-rgb, 123, 108, 217), 0.12); }
+  30%  { box-shadow: 0 0 0 6px rgba(var(--interactive-accent-rgb, 123, 108, 217), 0.18); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--interactive-accent-rgb, 123, 108, 217), 0); background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-settings-flash { animation: none; }
+}
+
+/* ============================================================
+   Enter Paycheck: recent deposits
+   ============================================================ */
+
+/* Each row is a <label>, so the whole row picks the deposit. */
+.budget-deposit-row { cursor: pointer; min-height: 40px; box-sizing: border-box; }
+.budget-deposit-row input[type="radio"] { flex: 0 0 auto; margin: 0; }
+.budget-deposit-list { margin-bottom: 0.6em; }
+.budget-deposit-row .budget-apply-label { overflow-wrap: anywhere; }
+
+/* Narrow screens give every pick-list label a line of its own. Here that would
+   strand the radio above its row, so it stays beside the name, with the amount
+   beneath. */
+@media (max-width: 700px) {
+  .budget-apply-row.budget-deposit-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 0.7em;
+    row-gap: 0.15em;
+  }
+  .budget-deposit-row .budget-apply-label { flex-basis: auto; }
+  .budget-deposit-row .budget-amount { grid-column: 2; }
+}
+
+/* ============================================================
+   Capped funds
+   ============================================================ */
+
+/* A capped fund follows an account's live balance, so it gets its own colour —
+   cyan rather than the accent the dated goals use — wherever it sits. */
+.budget-fund-fill:not(.budget-progress-done) {
+  background: linear-gradient(
+    90deg,
+    var(--color-cyan, #00bfbc),
+    color-mix(in srgb, var(--color-cyan, #00bfbc) 60%, var(--color-blue, #086ddd))
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-cyan, #00bfbc) 35%, transparent);
+}
+
+/* Mixed toward the text colour so it reads on both themes: raw cyan on white
+   is far below contrast. */
+.budget-badge-fund {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--color-cyan, #00bfbc) 60%, transparent);
+  color: color-mix(in srgb, var(--color-cyan, #00bfbc) 55%, var(--text-normal));
+  font-weight: 500;
+}
+
+.budget-fund-ask {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.budget-fund-stale {
+  color: color-mix(in srgb, var(--text-warning, #c47f16) 70%, var(--text-normal));
+}
+
+.budget-goals-head-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+}
+
+/* ---- In the hero ---- */
+
+.budget-fund-hero .budget-fund-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+}
+
+.budget-fund-hero-track {
+  height: 6px;
+  max-width: 260px;
+  margin: 0.5em 0 0.1em;
+}
+
+.budget-fund-hero-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-top: 0.5em;
+}
+
+.budget-fund-hero-btns .budget-basis-btn {
+  font-size: 0.8em;
+}
+
+body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
+.budget-mobile .budget-fund-hero-btns .budget-basis-btn {
+  min-height: 34px;
+  padding: 0.4em 0.9em;
+}
+
+/* ---- As a card ---- */
+
+.budget-fund-card .budget-sub-head {
+  align-items: center;
+}
+
+.budget-fund-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  min-width: 0;
+}
+
+.budget-fund-card .budget-fund-title h4 {
+  margin: 0;
+}
+
+.budget-fund-figure {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The fund's balance glows cyan wherever it sits — hero, card or goal row —
+   to match its cyan fill, the way Spendable glows green. Only a known balance:
+   a dash for "no balance yet" stays plain. */
+.budget-fund-number.budget-fund-glow {
+  color: var(--color-cyan, #00bfbc);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--color-cyan, #00bfbc) 50%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-fund-figure .budget-fund-number {
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.budget-fund-cap {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.budget-fund-card-track {
+  height: 12px;
+  margin-top: 0.4em;
+}
+
+.budget-fund-ask-row {
+  margin-top: 0.55em;
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+
+/* ---- Moving it ---- */
+
+.budget-fund-grip {
+  cursor: grab;
+  color: var(--text-faint, var(--text-muted));
+  font-size: 1.05em;
+  line-height: 1;
+  padding: 0 0.1em;
+  user-select: none;
+  -webkit-user-select: none;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.budget-fund-grip:hover { color: var(--text-muted); }
+.budget-fund-grip:active { cursor: grabbing; }
+
+/* Drop targets exist only while a fund is being dragged. */
+.budget-fund-drop {
+  display: none;
+}
+
+.budget-fund-dragging .budget-fund-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 56px;
+  padding: 0.8em 1em;
+  border: 2px dashed color-mix(in srgb, var(--text-accent, #7b6cd9) 55%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-accent, #7b6cd9) 5%, transparent);
+  color: var(--text-muted);
+  font-size: 0.9em;
+  text-align: center;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.budget-fund-dragging .budget-fund-drop.budget-fund-drop-over {
+  background: color-mix(in srgb, var(--text-accent, #7b6cd9) 16%, transparent);
+  border-color: var(--text-accent, #7b6cd9);
+  color: var(--text-normal);
+}
+
+/* No target where the fund already is. */
+.budget-fund-dragging.budget-fund-from-hero .budget-fund-drop-hero,
+.budget-fund-dragging.budget-fund-from-cards .budget-fund-drop-cards,
+.budget-fund-dragging.budget-fund-from-goals .budget-fund-drop-goals {
+  display: none;
+}
+
+.budget-fund-drop-cards { grid-column: 1 / -1; }
+.budget-fund-drop-goals { margin: 0.3em 0 0.6em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-fund-dragging .budget-fund-drop { transition: none; }
+}
+
+/* Narrow panes stack the card's heading; keep it left-aligned like every
+   other card's rather than centred by the rule above. */
+@media (max-width: 700px) {
+  .budget-fund-card .budget-sub-head { align-items: flex-start; }
+}

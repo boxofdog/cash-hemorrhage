@@ -1,0 +1,195 @@
+<div .budget-settings>
+  <div .setting-heading.setting-item>
+    <span .setting-name> Setup
+  <div .setting-item>
+    <span .setting-name> Create missing files
+    <span .setting-desc> 8 of the plugin's 17 data files are missing. This creates only what's missing; your existing data isn't changed.
+    <span .setting-btn> Create missing files
+  <h2> Budget Tracker
+  <div .setting-item>
+    <span .setting-name> Buffer mode
+    <span .setting-desc> How much cash to hold back for ordinary spending. Auto works it out from your targets, last month's actuals and the days
+    <span .setting-option> Smart auto-detect
+    <span .setting-option> Manual flat amount
+    <span .setting-value> manual
+  <div .setting-item>
+    <span .setting-name> Manual buffer
+    <span .setting-desc> Flat spending allowance for each pay period. Ordinary spending draws it down as it happens; changing it here re-sets the
+    <div .setting-item-description>
+    <span .setting-value> 350
+  <h3> Strategy
+  <p .budget-muted> Where a surplus goes once obligations and your spending allowance are covered. Minimum payments are treated as obligatio
+  <div .setting-item>
+    <span .setting-name> Deadline (optional)
+    <span .setting-desc> Shows a countdown to it. Goals are paced by their own target dates; a goal with none stays undated. Leave blank for open
+    <span .setting-value> 2026-11-26
+  <p .budget-apply-scope.budget-muted> 59 days from today.
+  <h3> Pay schedule
+  <p .budget-muted> Your payday follows a fixed cycle even though the amount varies, so set it once here and the next payday is calculated f
+  <div .setting-item>
+    <span .setting-name> Pay cadence
+    <span .setting-option> Weekly
+    <span .setting-option> Every 2 weeks
+    <span .setting-option> Twice a month (1st & 15th)
+    <span .setting-option> Monthly
+    <span .setting-value> semimonthly
+  <div .setting-item>
+    <span .setting-name> A known payday
+    <span .setting-desc> Any past payday works as the anchor; everything else is counted from it.
+    <span .setting-value> 2026-09-15
+  <p .budget-apply-scope.budget-muted> Next paydays: 2026-10-01 · 2026-10-15 · 2026-11-01 · 2026-11-15
+  <div .setting-item>
+    <span .setting-name> Detect from my transactions
+    <span .setting-desc> Reads deposits categorized “Paycheck” and infers the cadence and anchor date.
+    <span .setting-btn> Detect
+  <div .budget-sync-settings>
+    <h3> Bank sync (SimpleFIN)
+    <p .budget-muted> Optional. Pulls posted transactions and balances straight from your bank through SimpleFIN Bridge, in place of CSV expor
+    <div .setting-item>
+      <span .setting-name> SimpleFIN setup token
+      <span .setting-desc> Create one in SimpleFIN Bridge and paste it here. It's used once to connect, then thrown away. The connection is kept in
+      <span .setting-btn> Connect
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Accounts
+      <span .budget-collapsible-sub> 2 accounts
+    <div .budget-collapsible-body>
+      <div .setting-item>
+        <span .setting-btn> Add account
+      <div .budget-settings-cats>
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name> Credit Union
+            <div .budget-cat-usage> checking · $554.51 · id Main Checking
+            <div .budget-account-source.budget-cat-usage> the budget's cash on hand
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Edit
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name> Capital One
+            <div .budget-cat-usage> credit_card · $214.15 of $901 limit · id Capital One Card
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Edit
+            <button .budget-btn.budget-btn-danger> Delete
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Investment accounts
+      <span .budget-collapsible-sub> 0 accounts
+    <div .budget-collapsible-body>
+      <p .budget-muted> Retirement, HSA and brokerage accounts tracked on the Portfolio tab from pasted statements. Read-only: they never count 
+      <div .setting-item>
+        <span .setting-btn> Add investment account
+      <p .budget-muted> No investment accounts yet.
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Fixed expenses
+      <span .budget-collapsible-sub> 2 bills
+    <div .budget-collapsible-body>
+      <p .budget-muted> Every recurring bill, whether or not it's due this period. Rent, insurance, subscriptions — edit or remove them here.
+      <div .budget-settings-cats>
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Car Insurance
+              <span .budget-badge.budget-badge-empty> no payment category
+            <div .budget-cat-usage> $216.32 · monthly on day 8
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Edit
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Phone Co
+              <span .budget-badge.budget-badge-transfer> Phone Bill
+            <div .budget-cat-usage> $33.81 · monthly on day 4
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Edit
+            <button .budget-btn.budget-btn-danger> Delete
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Debts & plans
+      <span .budget-collapsible-sub> 0 debts
+    <div .budget-collapsible-body>
+      <p .budget-muted> Credit card terms, BNPL plans and loans. Balances are derived from the ledger rather than typed, so editing here changes
+      <div .setting-item>
+        <span .setting-btn> Add credit card terms
+        <span .setting-btn> Add BNPL plan
+        <span .setting-btn> Add loan
+      <p .budget-muted> Nothing tracked yet.
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Savings goals
+      <span .budget-collapsible-sub> 0 goals
+    <div .budget-collapsible-body>
+      <div .setting-item>
+        <span .setting-btn> New goal
+        <span .setting-btn> New capped fund
+      <p .budget-muted> No goals yet.
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Categories
+      <span .budget-collapsible-sub> 4 categories
+    <div .budget-collapsible-body>
+      <p .budget-muted> Rename a category to fix a typo or merge duplicates — the change applies to every rule, transaction and override using i
+      <div .budget-settings-cats>
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Credit Card Payment
+              <span .budget-badge.budget-badge-transfer> transfer
+            <div .budget-cat-usage> unused
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Count as spending
+            <button .budget-btn> Rename
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Eating Out
+            <div .budget-cat-usage> unused
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Mark necessity
+            <button .budget-btn> Scheduled bill
+            <button .budget-btn> Mark as transfer
+            <button .budget-btn> Rename
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Gas
+            <div .budget-cat-usage> 1 rule
+          <div .budget-cat-btn-col>
+            <button .budget-btn.budget-btn-necessity> Necessity ✓
+            <button .budget-btn> Scheduled bill
+            <input .budget-min-input.budget-money-input.budget-target-input>
+            <button .budget-btn> Mark as transfer
+            <button .budget-btn> Rename
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Phone Bill
+              <span .budget-badge.budget-badge-pinned> scheduled bill
+            <div .budget-cat-usage> unused
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Mark necessity
+            <button .budget-btn.budget-btn-necessity> Scheduled bill ✓
+            <button .budget-btn> Mark as transfer
+            <button .budget-btn> Rename
+            <button .budget-btn.budget-btn-danger> Delete
+  <details .budget-collapsible.budget-settings-section>
+    <summary .budget-collapsible-summary>
+      <span .budget-collapsible-title> Category rules
+      <span .budget-collapsible-sub> 1 rule
+    <div .budget-collapsible-body>
+      <p .budget-muted> Each rule maps a merchant pattern to a category. Any transaction whose description contains the pattern gets that catego
+      <input .budget-settings-search>
+      <div .budget-settings-rules>
+        <div .budget-rule-row>
+          <div .budget-rule-text-col>
+            <div .budget-rule-pattern> SHELL
+            <div .budget-rule-label> Gas
+          <div .budget-rule-btn-col>
+            <button .budget-btn> Edit
+            <button .budget-btn.budget-btn-danger> Delete

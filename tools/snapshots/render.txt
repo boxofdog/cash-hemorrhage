@@ -1,0 +1,129 @@
+<div>
+  <div .budget-period-bar>
+    <span> Pay period 2026-09-15 → 2026-09-29
+    <span .budget-period-days> 1 day to next payday
+  <div .budget-hero>
+    <div .budget-hero-figures>
+      <div .budget-hero-block>
+        <div .budget-hero-label> Spendable till payday
+        <div .budget-hero-number.budget-positive> $350.00
+      <div .budget-hero-block.budget-hero-secondary>
+        <div .budget-hero-label> Total flexibility (incl. credit)
+        <div .budget-hero-number> $1000.00
+    <div .budget-hero-basis>
+      <span> from $612.62 on hand − $1982.44 committed − $350.00 held for daily spend
+      <button .budget-basis-btn> Update balance
+    <div .budget-hero-detail>
+      <details .budget-collapsible>
+        <summary .budget-collapsible-summary>
+          <span .budget-collapsible-title> Where this period's money went
+          <span .budget-collapsible-sub> $1054.77 across 1 transaction
+        <div .budget-collapsible-body>
+          <div .budget-fixed-row>
+            <div .budget-buffer-text.budget-fixed-name>
+              <div> Transfers between accounts
+              <div .budget-buffer-sub> 1 transaction · matched by category
+            <span .budget-amount> $1054.77
+  <div .budget-warning> Short by about $1369.82: fixed costs, minimum payments, subscriptions, earmarked savings and projected necessities exceed your cash on hand.
+  <div>
+  <div .budget-grid>
+    <div .budget-card>
+      <h4> Due this pay period
+      <p .budget-card-sub.budget-muted> Bills, debt payments and subscriptions the budget already knows you owe.
+      <div .budget-fixed-row>
+        <span .budget-fixed-name> Phone Co
+        <span .budget-amount> $33.81
+        <button .budget-btn> Mark Paid
+      <div .budget-fixed-paid.budget-fixed-row>
+        <span .budget-fixed-name> Affirm - Tablet — paid
+        <span .budget-amount> $22.22
+      <div .budget-fixed-paid.budget-fixed-row>
+        <span .budget-fixed-name> Affirm - Toy — paid
+        <span .budget-amount> $24.37
+      <div .budget-fixed-paid.budget-fixed-row>
+        <span .budget-fixed-name> ZIP - Console — paid
+        <span .budget-amount> $67.50
+      <div .budget-fixed-row>
+        <span .budget-fixed-name> Capital One Card minimum
+        <span .budget-amount> $40.00
+      <div .budget-fixed-row>
+        <span .budget-fixed-name> Earmarked for savings goals
+        <span .budget-amount> $250.00
+      <p .budget-muted> $181.58 total paid in minimums this period.
+    <div .budget-card>
+      <div .budget-sub-head>
+        <h4> Upcoming subscriptions due
+        <span .budget-sub-total> $20.00
+      <ul .budget-list>
+        <li>
+          <div .budget-sub-text-col>
+            <div> Claude
+            <div .budget-sub-meta> renews 2026-09-27 · Monthly
+          <span .budget-amount> $20.00
+      <div .budget-nested-head.budget-sub-head>
+        <h4> Projected necessities
+        <span .budget-sub-total> $1638.63
+      <div .budget-fixed-row.budget-necessity-row>
+        <div .budget-buffer-text.budget-fixed-name>
+          <div> Gas
+          <div .budget-buffer-sub> ~1 purchase before payday · ~$53.73 each · typical gap 5 days
+        <span .budget-amount> $53.73
+      <div .budget-fixed-row.budget-necessity-row>
+        <div .budget-buffer-text.budget-fixed-name>
+          <div> Pet Bills
+          <div .budget-buffer-sub> ~9 purchases before payday · ~$176.10 each · typical gap 1 day
+        <span .budget-amount> $1584.90
+    <div .budget-card.budget-card-wide>
+      <div .budget-split>
+        <div>
+          <h5> Recommended payoff
+          <p .budget-muted> Paused while Savings Focus is on — switch to Debt Reduction at the top of the dashboard to see payoff targets.
+        <div>
+          <h5> Recommended savings
+          <p .budget-muted> Nothing left to allocate after obligations and your safety buffer.
+  <div .budget-card.budget-goals-card>
+    <div .budget-sub-head>
+      <h4> Savings goals
+      <div .budget-goals-head-btns>
+        <button .budget-btn> New goal
+        <button .budget-btn> New capped fund
+    <div .budget-goal-row>
+      <div .budget-goal-top>
+        <div .budget-goal-name>
+          <span> Trip fund
+        <span .budget-amount> $250.00 / $3000.00
+      <div .budget-progress-track>
+        <div .budget-progress-fill>
+      <div .budget-goal-meta>
+        <span> $2750.00 to go · 5 paychecks before 2026-11-26 · $550.00 each (cadence inferred from your paycheck history)
+      <div .budget-goal-btns>
+        <button .budget-btn> Pin to dashboard
+        <button .budget-btn.mod-cta> Add Funds
+        <button .budget-btn> Edit
+        <button .budget-btn.budget-btn-danger> Delete
+      <details .budget-collapsible>
+        <summary .budget-collapsible-summary>
+          <span .budget-collapsible-title> Contributions
+          <span .budget-collapsible-sub> 1 · $250.00 held back from free cash
+        <div .budget-collapsible-body>
+          <div .budget-contrib-row>
+            <div .budget-contrib-main>
+              <span .budget-amount.budget-positive> +$250.00
+              <div .budget-contrib-meta>
+                <span> 2026-09-01
+                <span .budget-badge.budget-badge-manual> held back from free cash
+            <div .budget-contrib-btns>
+              <button .budget-btn> Match transaction
+              <button .budget-btn.budget-btn-danger> Remove
+    <p .budget-apply-scope.budget-muted> $250.00 is held back from free cash for goals. Match a contribution to its transfer transaction once it shows up in an import and it stops being held back — your balance will already account for it.
+  <div .budget-card.budget-pie-card>
+    <div .budget-pie-header>
+      <div .budget-segmented>
+        <button .budget-segment.budget-segment-on> Spending
+        <button .budget-segment> Income
+      <select .budget-range-select>
+        <option> This pay period
+        <option> Last 30 days
+        <option> All time (everything imported)
+    <p .budget-muted> No spend in this range yet.
+    <p .budget-muted> (There is $1054.77 in transfer-only spend for this range, excluded from the chart.)

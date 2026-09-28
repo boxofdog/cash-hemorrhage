@@ -1,0 +1,408 @@
+{
+  "periodFixed": [
+    {
+      "id": "f1",
+      "name": "Phone Co",
+      "amount": 33.81,
+      "due_day_of_month": 20,
+      "payment_category": "Phone Bill",
+      "linked_payments": []
+    }
+  ],
+  "periodFixedPaid": [],
+  "periodFixedTotal": 33.81,
+  "requiredMinimums": 40,
+  "dueInstallments": [
+    {
+      "payment_category": "BNPL",
+      "provider": "Affirm - Tablet",
+      "installment_amount": 22.22,
+      "frequency": "monthly",
+      "remaining_installments": 18,
+      "next_due_date": "2026-09-24",
+      "balance_anchor": {
+        "amount": 399.96,
+        "date": "2026-09-09"
+      },
+      "applied_payments": [
+        {
+          "tx_id": "tx-mu3b0hae-r-506ztl",
+          "amount": 22.22,
+          "date": ""
+        }
+      ],
+      "_due": 22.22,
+      "_paidThisPeriod": 22.22,
+      "_remaining": 0,
+      "_settled": true
+    },
+    {
+      "payment_category": "BNPL",
+      "provider": "Affirm - Toy",
+      "installment_amount": 24.37,
+      "frequency": "biweekly",
+      "remaining_installments": 1,
+      "next_due_date": "2026-09-26",
+      "deferred_interest_risk": {
+        "applies": true,
+        "retroactive_apr": 0,
+        "payoff_deadline": "2026-09-26",
+        "original_principal": 0
+      },
+      "balance_anchor": {
+        "amount": 48.74,
+        "date": "2026-09-09"
+      },
+      "applied_payments": [
+        {
+          "tx_id": "tx-mtxszj42-h-d74u6n",
+          "amount": 24.37,
+          "date": "2026-09-11"
+        },
+        {
+          "tx_id": "tx-mu3b0hae-q-pprvjo",
+          "amount": 24.37,
+          "date": ""
+        }
+      ],
+      "_due": 24.37,
+      "_paidThisPeriod": 24.37,
+      "_remaining": 0,
+      "_settled": true
+    },
+    {
+      "payment_category": "BNPL",
+      "provider": "ZIP - Console",
+      "installment_amount": 67.5,
+      "frequency": "biweekly",
+      "remaining_installments": 8,
+      "next_due_date": "2026-09-22",
+      "balance_anchor": {
+        "amount": 540,
+        "date": "2026-09-09"
+      },
+      "applied_payments": [
+        {
+          "tx_id": "tx-mtuoauk4-1c-k8nnms",
+          "amount": 67.49,
+          "date": ""
+        },
+        {
+          "tx_id": "tx-mu3b0hae-p-pqw7lt",
+          "amount": 67.5,
+          "date": ""
+        }
+      ],
+      "_due": 67.5,
+      "_paidThisPeriod": 134.99,
+      "_remaining": 0,
+      "_settled": true
+    }
+  ],
+  "dueRevolvingMins": [
+    {
+      "id": "cc1",
+      "account_id": "Capital One Card",
+      "payment_category": "Credit Card Payment",
+      "apr": 29.99,
+      "min_payment_due": 40,
+      "due_date": "2026-09-25",
+      "balance_anchor": {
+        "amount": 590.46,
+        "date": "2026-09-11"
+      },
+      "applied_payments": [],
+      "_due": 40,
+      "_paidThisPeriod": 0,
+      "_remaining": 40,
+      "_settled": false
+    }
+  ],
+  "availableForDebt": -1719.8200000000002,
+  "payoffBreakdown": [],
+  "recommendedExtraPayoff": 0,
+  "freeCash": -1719.8200000000002,
+  "savingsMode": true,
+  "minimumsPaid": 181.58,
+  "savingsBreakdown": [],
+  "recommendedSavings": 0,
+  "upcomingSubs": [
+    {
+      "key": "Claude",
+      "amount": 20,
+      "dueDate": "2026-09-27",
+      "cadence": "monthly",
+      "cadenceLabel": "Monthly"
+    }
+  ],
+  "periodSubsTotal": 20,
+  "earmarked": 250,
+  "committed": 1982.44,
+  "variableNecessities": {
+    "detail": [
+      {
+        "category": "Gas",
+        "sufficientHistory": true,
+        "medianAmount": 53.73,
+        "medianGap": 5,
+        "lastPurchaseDate": "2026-09-09",
+        "projectedDates": [
+          "2026-09-24"
+        ],
+        "projectedCount": 1,
+        "reserveAmount": 53.73
+      },
+      {
+        "category": "Pet Bills",
+        "sufficientHistory": true,
+        "medianAmount": 176.1,
+        "medianGap": 1,
+        "lastPurchaseDate": "2026-08-04",
+        "projectedDates": [
+          "2026-09-20",
+          "2026-09-21",
+          "2026-09-22",
+          "2026-09-23",
+          "2026-09-24",
+          "2026-09-25",
+          "2026-09-26",
+          "2026-09-27",
+          "2026-09-28"
+        ],
+        "projectedCount": 9,
+        "reserveAmount": 1584.9
+      }
+    ],
+    "totalReserve": 1638.63,
+    "skipped": []
+  },
+  "variableNecessitiesTotal": 1638.63,
+  "cashOnHand": 612.62,
+  "obligationShortfall": 1369.82,
+  "effectiveBuffer": 350,
+  "bufferMode": "manual",
+  "bufferCalc": {
+    "total": 730.18,
+    "daysLeft": 9,
+    "detail": [
+      {
+        "name": "Eating Out",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 208.41,
+        "lastMonthActual": 559.54,
+        "daily": 18.41,
+        "hold": 165.65
+      },
+      {
+        "name": "Clothes/Luxuries",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 84.76,
+        "lastMonthActual": 405.62,
+        "daily": 13.34,
+        "hold": 120.08
+      },
+      {
+        "name": "Subscription",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 61.97,
+        "lastMonthActual": 324.98,
+        "daily": 10.69,
+        "hold": 96.21
+      },
+      {
+        "name": "Misc.",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 19.97,
+        "lastMonthActual": 204.91,
+        "daily": 6.74,
+        "hold": 60.66
+      },
+      {
+        "name": "BNPL",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 164.58,
+        "lastMonthActual": 173.59,
+        "daily": 5.71,
+        "hold": 51.39
+      },
+      {
+        "name": "Entertainment",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 207.79,
+        "lastMonthActual": 153.13,
+        "daily": 5.04,
+        "hold": 45.33
+      },
+      {
+        "name": "Groceries",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 46.29,
+        "lastMonthActual": 121.85,
+        "daily": 4.01,
+        "hold": 36.07
+      },
+      {
+        "name": "Snacks",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 109.04,
+        "lastMonthActual": 84.16,
+        "daily": 2.77,
+        "hold": 24.92
+      },
+      {
+        "name": "Misc. Car Bills",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 0,
+        "lastMonthActual": 57.48,
+        "daily": 1.89,
+        "hold": 17.02
+      },
+      {
+        "name": "Phone Bill",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 0,
+        "lastMonthActual": 33.81,
+        "daily": 1.11,
+        "hold": 10.01
+      },
+      {
+        "name": "Misc Income",
+        "basis": "no target",
+        "target": null,
+        "currentActual": 0,
+        "lastMonthActual": 25.62,
+        "daily": 0.84,
+        "hold": 7.58
+      }
+    ]
+  },
+  "allocatedBuffer": 350,
+  "bufferSpent": 0,
+  "bufferRemaining": 350,
+  "bufferOverrun": 0,
+  "bufferSpending": {
+    "spent": 0,
+    "byCategory": [],
+    "settled": {
+      "transfer": 1054.77
+    },
+    "considered": 1,
+    "unowned": [],
+    "unsettled": [
+      {
+        "id": "tx-mu3azbux-1-09cd57",
+        "date": "2026-09-15",
+        "amount": 1054.77,
+        "category": "Savings",
+        "merchant_raw": "To Savings 00",
+        "class": "transfer",
+        "basis": "transfer category"
+      }
+    ]
+  },
+  "bufferAllocation": {
+    "amount": 350,
+    "mode": "manual",
+    "manualBuffer": 350,
+    "capturedFor": "2026-09-15"
+  },
+  "periodObligations": [
+    {
+      "source": "fixed_expense",
+      "ref": "f1",
+      "label": "Phone Co",
+      "amount": 33.81,
+      "paid": 0,
+      "remaining": 33.81,
+      "dueDate": "2026-09-20",
+      "settled": false
+    },
+    {
+      "source": "debt",
+      "ref": "bnpl:ZIP - Console",
+      "label": "ZIP - Console",
+      "amount": 67.5,
+      "paid": 134.99,
+      "remaining": 0,
+      "dueDate": "2026-09-22",
+      "settled": true
+    },
+    {
+      "source": "debt",
+      "ref": "bnpl:Affirm - Tablet",
+      "label": "Affirm - Tablet",
+      "amount": 22.22,
+      "paid": 22.22,
+      "remaining": 0,
+      "dueDate": "2026-09-24",
+      "settled": true
+    },
+    {
+      "source": "debt",
+      "ref": "cc1",
+      "label": "Capital One Card",
+      "amount": 40,
+      "paid": 0,
+      "remaining": 40,
+      "dueDate": "2026-09-25",
+      "settled": false
+    },
+    {
+      "source": "debt",
+      "ref": "bnpl:Affirm - Toy",
+      "label": "Affirm - Toy",
+      "amount": 24.37,
+      "paid": 24.37,
+      "remaining": 0,
+      "dueDate": "2026-09-26",
+      "settled": true
+    },
+    {
+      "source": "subscription",
+      "ref": "Claude",
+      "label": "Claude",
+      "amount": 20,
+      "paid": 0,
+      "remaining": 20,
+      "dueDate": "2026-09-27",
+      "settled": false
+    }
+  ],
+  "ownershipSummary": {
+    "byType": [
+      {
+        "type": "transfer",
+        "amount": 1054.77,
+        "count": 1,
+        "explicit": 0
+      }
+    ],
+    "total": 1054.77,
+    "count": 1
+  },
+  "unreconciled": {
+    "pairs": [],
+    "total": 0,
+    "needsMatching": [],
+    "openByClass": {
+      "fixed_expense": 33.81,
+      "debt": 40,
+      "subscription": 20
+    }
+  },
+  "deficit": true,
+  "todayStr": "2026-09-15",
+  "nextPaydayStr": "2026-09-29",
+  "totalFlexibility": 1000,
+  "autoRolled": false
+}
