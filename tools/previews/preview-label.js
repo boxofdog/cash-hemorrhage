@@ -65,7 +65,7 @@ class Setting {
   const browser = await chromium.launch();
   const txs = [
     "Recurring Withdrawal Debit Card GOOGLE *G1SK002M 855-836-3987 CA Date 09/23/26 031652 5816 Card 20 #0000",
-    "Recurring Withdrawal Debit Card GOOGLE *Relay for r", "Recurring Withdrawal Debit Card GOOGLE *Bumble Dati"
+    "Recurring Withdrawal Debit Card GOOGLE *Reader App", "Recurring Withdrawal Debit Card GOOGLE *Streamly App"
   ].map((m) => ({ merchant_raw: m }));
   const rules = [{ merchant_pattern: "Relay for r", home_label: "Subscription", display_name: "Relay for Reddit" }, { merchant_pattern: "Recurring Withdrawal Debit Card GOOGLE", home_label: "Subscription", display_name: "Relay for Reddit" }];
   for (const [name, width, open] of [["closed", 560, false], ["open", 560, true], ["mobile", 390, false]]) {

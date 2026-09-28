@@ -30,13 +30,13 @@ const shape = (r) => r.transactions.map((t) => ({
 const CORPUS = {
   // A typical credit union export. Signed amounts AND a Transaction Type column,
   // so this is the export most at risk from the change.
-  cccu: `Transaction ID,Posting Date,Effective Date,Transaction Type,Posting Status,Amount,Check Number,Reference Number,Description,Transaction Category,Type,Balance,Memo,Extended Description
-20260915 001,09/15/2026,09/15/2026,Debit,Posted,-33.81,,REF001,GOOGLE *FI XzP3N6,Utilities,Debit,1200.00,,
-20260915 002,09/15/2026,09/15/2026,Credit,Posted,1748.95,,REF002,ACME FOODS INC PAYROLL,Income,Credit,2948.95,,
+  bankCsv: `Transaction ID,Posting Date,Effective Date,Transaction Type,Posting Status,Amount,Check Number,Reference Number,Description,Transaction Category,Type,Balance,Memo,Extended Description
+20260915 001,09/15/2026,09/15/2026,Debit,Posted,-29.99,,REF001,GOOGLE *PHONE CO XzP3N6,Utilities,Debit,1200.00,,
+20260915 002,09/15/2026,09/15/2026,Credit,Posted,1750.00,,REF002,ACME FOODS INC PAYROLL,Income,Credit,2950.00,,
 20260916 003,09/16/2026,09/16/2026,Debit,Posted,-67.50,,REF003,ZIP* BEST BUY 183-37823729,Shopping,Debit,2881.45,,`,
 
   // Same bank, the other vocabulary its statements use.
-  cccu_withdrawal: `Transaction ID,Posting Date,Transaction Type,Posting Status,Amount,Description
+  bankCsv_withdrawal: `Transaction ID,Posting Date,Transaction Type,Posting Status,Amount,Description
 20260915 001,09/15/2026,Withdrawal,Posted,-20.00,SHELL SERVICE STATION
 20260915 002,09/15/2026,Deposit,Posted,500.00,TRANSFER IN`,
 
@@ -218,10 +218,10 @@ console.log("\nThe real bank formats land on the right rows");
   check("Chase return stays positive", chase[2].amount, 18.44);
   check("and it reads the Post Date column", chase[0].date, "2026-09-15");
 
-  const cccu = parseNew(CORPUS.cccu).transactions;
-  check("a credit union export is unmoved", cccu.map((t) => t.amount), [-33.81, 1748.95, -67.5]);
-  check("with descriptions from the right column", cccu[0].merchant_raw, "GOOGLE *FI XzP3N6");
-  check("and ids from Transaction ID, not Reference Number", parseNew(CORPUS.cccu).transactions.length, 3);
+  const bankCsv = parseNew(CORPUS.bankCsv).transactions;
+  check("a credit union export is unmoved", bankCsv.map((t) => t.amount), [-29.99, 1750.00, -67.5]);
+  check("with descriptions from the right column", bankCsv[0].merchant_raw, "GOOGLE *PHONE CO XzP3N6");
+  check("and ids from Transaction ID, not Reference Number", parseNew(CORPUS.bankCsv).transactions.length, 3);
 }
 
 
