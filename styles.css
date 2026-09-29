@@ -2860,10 +2860,16 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
   border: 1px solid var(--background-modifier-border);
 }
 
-.budget-segment {
+/* Two classes, not one: Obsidian styles every button with
+   button:not(.clickable-icon) (a raised, filled look, plus a hover fill), which
+   a single-class selector loses to. Without this both halves of the switch read
+   as raised buttons and the unselected one isn't visibly "off". */
+.budget-segmented .budget-segment {
   appearance: none;
   border: none;
   background: none;
+  box-shadow: none;
+  height: auto;
   color: var(--text-muted);
   font-size: 0.86em;
   font-weight: 600;
@@ -2873,7 +2879,8 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.budget-segment:hover {
+.budget-segmented .budget-segment:hover {
+  background: none;
   color: var(--text-normal);
 }
 
@@ -2891,7 +2898,7 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
   gap: 3px;
 }
 
-.budget-segmented-lg .budget-segment {
+.budget-segmented.budget-segmented-lg .budget-segment {
   font-size: 0.95em;
   padding: 0.5em 1.6em;
 }
@@ -2914,15 +2921,15 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
     margin-top: 0.6em;
   }
   .budget-segmented-lg { display: flex; width: 100%; }
-  .budget-segmented-lg .budget-segment {
+  .budget-segmented.budget-segmented-lg .budget-segment {
     flex: 1;
     padding-inline: 0.6em;
     min-height: 40px;
   }
 }
 
-.budget-segment-on,
-.budget-segment-on:hover {
+.budget-segmented .budget-segment.budget-segment-on,
+.budget-segmented .budget-segment.budget-segment-on:hover {
   background: var(--background-secondary);
   color: var(--text-normal);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);

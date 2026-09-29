@@ -9,6 +9,10 @@
 - **Card payments are shown apart.** They're still listed and counted, since the
   cash did leave, but as their own **Card payments** line with the amount in
   purple and a short note: "Pays off spending already counted on the card."
+- **The Debt Reduction / Savings Focus switch looks like a switch in Obsidian.**
+  Obsidian's own button styling was drawing both halves as raised buttons, so
+  the one that wasn't selected didn't look off. The unselected side is now flat
+  and muted, and the selected one is the filled pill.
 
 ## 1.27.0
 
