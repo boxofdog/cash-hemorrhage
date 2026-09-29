@@ -101,8 +101,15 @@ Please read this: the plugin handles financial data.
 - **Credential storage.** The SimpleFIN access URL is a secret. It is kept in
   Obsidian's secret storage (or, on older versions, Obsidian's local storage),
   not in your vault files, so it isn't synced or committed with your notes.
-- **No other network requests.** CSV import and everything else works
-  offline.
+- **Exactly three network calls, all to SimpleFIN.** Claiming your one-time setup
+  token, then two requests to fetch your accounts and transactions, sent through
+  Obsidian's own request function. Nothing else in the plugin reaches the
+  network, and CSV import works fully offline.
+- **Why the code uses base64.** SimpleFIN's setup token is a web address encoded
+  in base64, which the plugin decodes to know where to claim your access. The
+  access address carries a username and password, sent in the standard HTTP
+  "Basic" login header, which is also base64 by definition. It isn't used to
+  hide anything.
 - **Not financial advice.** Figures are estimates from the data you provide.
 
 ## Development
@@ -117,6 +124,10 @@ npm run check   # syntax, TDZ scan, render snapshots, all tests
 
 See `docs/ARCHITECTURE.md` and `CLAUDE.md` for how the code is laid out. All
 test data is synthetic.
+
+## Contributing
+
+Bug reports and ideas are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
