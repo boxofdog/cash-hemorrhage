@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.27.2
+
+### Fixed
+- **Money moved to a savings goal no longer shows in "Where this period's money
+  went."** Like a move between your own accounts, it's the same money in another
+  place, so it's out of the list, the total and the count. Your spending
+  allowance is unchanged.
+
 ## 1.27.1
 
 ### Fixed

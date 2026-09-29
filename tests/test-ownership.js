@@ -432,6 +432,14 @@ console.log("\nMoney went: transfers and card payments");
   const own2 = idx({ categoryMeta: meta });
   const withCard = summarizeOwnership(custom, START, END, own2, new Set(["Visa Payment"]));
   check("a card's own payment category counts as a card payment", withCard.byType.map((b) => b.type).join(","), "card_payment");
+  // A move into a savings goal is the same money in another place, so it is
+  // left out too; the goal link that classes it stays for everything else.
+  const sv = tx("2026-09-18", -400, "Savings");
+  const goalIdx = idx({ goals: [{ id: "g1", name: "Trip", contributions: [{ id: "c1", amount: 400, linked_tx_id: sv.id }] }] });
+  check("the move is owned by savings for the allowance", goalIdx.ownerOf(sv).class, "savings");
+  const withGoal = summarizeOwnership([sv, tx("2026-09-16", -40, "Eating Out")], START, END, goalIdx);
+  check("but it is not listed, and not in the total or count", [withGoal.byType.map((b) => b.type).join(","), withGoal.total, withGoal.count].join("|"), "discretionary|40|1");
+
   check("the allowance is untouched by the display change",
     alloc({ cashOnHand: 100, transactions: txs }).ownershipSummary.total,
     alloc({ cashOnHand: 100, transactions: txs.slice(0, 2) }).ownershipSummary.total);

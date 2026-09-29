@@ -6729,8 +6729,8 @@ function buildPeriodObligations({
 // Which single bucket absorbed each outgoing transaction this period.
 // Exists so the question "where did this money go?" has one checkable answer
 // rather than being reconstructed differently by whoever is asking.
-// Moving cash between your own accounts is net-neutral, so those rows are left
-// out. A card payment is the exception: cash did leave, so it is listed and
+// Moving cash between your own accounts, or into a savings goal, is net-neutral,
+// so those rows are left out. A card payment is the exception: cash did leave, so it is listed and
 // counted, as its own "card_payment" line (shown apart, since it pays off
 // spending already made on the card). cardPaymentCategories names those.
 function summarizeOwnership(transactions, periodStartStr, nextPaydayStr, ownership, cardPaymentCategories = null) {
@@ -6746,6 +6746,8 @@ function summarizeOwnership(transactions, periodStartStr, nextPaydayStr, ownersh
     if (amount <= 0) return;
     const owner = ownership.ownerOf(t);
     let type = owner ? owner.class : "discretionary";
+    // Money moved to a savings goal is the same money in another place.
+    if (type === "savings") return;
     if (type === "transfer") {
       const isCard = cardPaymentCategories && cardPaymentCategories.has(t.override_label || t.resolved_category);
       if (!isCard) return;
@@ -13164,7 +13166,6 @@ class BudgetDashboardView extends ItemView {
       const OWNER_LABELS = {
         debt: "Debt payments",
         fixed_expense: "Fixed bills",
-        savings: "Savings transfers",
         subscription: "Subscriptions",
         card_payment: "Card payments",
         variable_necessity: "Variable necessities",
