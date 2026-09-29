@@ -990,6 +990,8 @@ console.log("\n18. Settings → Bank sync");
   await tab.renderBankSyncSettings(root);
   const wrap = root.children[0];
   check("a heading of its own", allText(root).includes("Bank sync (SimpleFIN)"), true);
+  check("warns it can be unstable and points at Adjust", /\(Unstable\) .*Adjust on SimpleFIN Bridge's website/.test(allText(root)), true);
+  check("in the note's own purple class", (function has(n) { return !!(n.classes && n.classes.has("budget-sync-unstable")) || (n.children || []).some(has); })(root), true);
   check("says it's optional", /Optional\. .*Accounts you don't link keep using Import CSV\./.test(allText(root)), true);
   const token = SettingStub.texts.find((t) => t.settingName === "SimpleFIN setup token");
   check("a token field", !!token, true);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.27.3
+
+### Changed
+- **Bank sync says it can be unstable.** A short purple note under the
+  SimpleFIN description: "(Unstable) Some transactions may not appear until you
+  use Adjust on SimpleFIN Bridge's website."
+
 ## 1.27.2
 
 ### Fixed

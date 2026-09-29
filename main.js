@@ -16415,6 +16415,12 @@ class BudgetSettingTab extends PluginSettingTab {
         "in place of CSV exports. Accounts you don't link keep using Import CSV.",
       cls: "budget-muted"
     });
+    // SimpleFIN is a third-party bridge and banks drop out of it now and then, so
+    // say so up front rather than after someone wonders where a transaction went.
+    wrap.createEl("p", {
+      text: "(Unstable) Some transactions may not appear until you use Adjust on SimpleFIN Bridge's website.",
+      cls: "budget-sync-unstable"
+    });
 
     const focusRequested = this.plugin.settingsFocus === "simplefin";
     if (focusRequested) this.plugin.settingsFocus = null;

@@ -45,6 +45,7 @@
   <div .budget-sync-settings>
     <h3> Bank sync (SimpleFIN)
     <p .budget-muted> Optional. Pulls posted transactions and balances straight from your bank through SimpleFIN Bridge, in place of CSV expor
+    <p .budget-sync-unstable> (Unstable) Some transactions may not appear until you use Adjust on SimpleFIN Bridge's website.
     <div .setting-item>
       <span .setting-name> SimpleFIN setup token
       <span .setting-desc> Create one in SimpleFIN Bridge and paste it here. It's used once to connect, then thrown away. The connection is kept in

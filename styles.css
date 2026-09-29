@@ -3537,3 +3537,10 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 .budget-owner-card .budget-owner-card-note {
   color: var(--color-purple);
 }
+
+/* A heads-up under the bank sync description, in the same purple as other
+   "worth knowing" notes. */
+.budget-sync-unstable {
+  color: var(--color-purple);
+  margin: 0.2em 0 0.8em;
+}
