@@ -2502,6 +2502,9 @@ function enableTrendSandwich(wrap, { breakdown, onToggle = null, narrow = () => 
       const light = (on) => {
         layer.classList.toggle("is-hot", on);
         r.classList.toggle("is-hot", on);
+        // CSS can't ask "does this contain a lit layer" without :has, which is
+        // slow to invalidate, so the group says so itself.
+        group.classList.toggle("has-hot", !!group.querySelector(".is-hot"));
       };
       [r, hot].forEach((n) => {
         n.addEventListener("pointerenter", () => light(true));

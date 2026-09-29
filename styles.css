@@ -496,7 +496,7 @@
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  column-gap: 2em;
+  gap: 0 2em;
   align-content: start;
 }
 
@@ -914,9 +914,13 @@ body.is-mobile .budget-label-answers > button { flex: 1; }
   cursor: pointer;
 }
 /* A quiet, text-like button: "Added by mistake? Delete it". */
+button.budget-link-btn.budget-link-btn,
+button.budget-link-btn.budget-link-btn:hover {
+  background: none;
+  box-shadow: none;
+}
+
 .budget-link-btn {
-  background: none !important;
-  box-shadow: none !important;
   border: none;
   padding: 0;
   color: var(--text-muted);
@@ -1066,8 +1070,7 @@ body.is-mobile .budget-label-answers > button { flex: 1; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(88px, auto) auto;
   align-items: center;
-  column-gap: 1em;
-  row-gap: 0.5em;
+  gap: 0.5em 1em;
   padding: 0.6em 0.5em;
   margin: 0 -0.5em;
   border-bottom: 1px solid var(--background-modifier-border);
@@ -1195,7 +1198,10 @@ body.is-mobile .budget-label-answers > button { flex: 1; }
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   overflow-x: auto;
-  scrollbar-width: none;
+}
+
+.budget-action-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .budget-tabs::-webkit-scrollbar { display: none; }
@@ -1850,7 +1856,6 @@ body.is-mobile .budget-label-answers > button { flex: 1; }
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
     padding-bottom: 0.9em;
     margin-bottom: 1em;
   }
@@ -1879,7 +1884,7 @@ body.is-mobile .budget-label-answers > button { flex: 1; }
   /* Rows stack: label on top, controls beneath, full width */
   .budget-sub-row {
     grid-template-columns: 1fr auto;
-    column-gap: 0.6em;
+    gap: 0.5em 0.6em;
   }
   .budget-sub-btn-col {
     grid-column: 1 / -1;
@@ -2318,7 +2323,7 @@ body.is-mobile .budget-launcher-summary {
 .budget-trend-open .budget-trend-month:not(.is-open),
 .budget-trend-open .budget-trend-grid { pointer-events: none; }
 .budget-trend-open .budget-trend-bar,
-.budget-trend-slice { transition: none !important; }
+.budget-trend-slice { transition: none; }
 .budget-trend-sandwich { cursor: pointer; }
 .budget-trend-sandwich:focus { outline: none; }
 .budget-trend-sandwich:focus-visible .budget-trend-slice { stroke: var(--interactive-accent, #7b6cd9); stroke-width: 1.5; }
@@ -2335,8 +2340,8 @@ body.is-mobile .budget-launcher-summary {
 .budget-trend-swatch-mark { pointer-events: none; }
 .budget-trend-label-hit { cursor: pointer; }
 /* Pointing at a layer or its label lights both; the rest step back. */
-.budget-trend-sandwich:has(.is-hot) .budget-trend-layer:not(.is-hot),
-.budget-trend-sandwich:has(.is-hot) .budget-trend-slice:not(.is-hot) { opacity: 0.45; }
+.budget-trend-sandwich.has-hot .budget-trend-layer:not(.is-hot),
+.budget-trend-sandwich.has-hot .budget-trend-slice:not(.is-hot) { opacity: 0.45; }
 .budget-trend-layer.is-hot .budget-trend-tick { opacity: 1; stroke-width: 2; }
 .budget-trend-layer.is-hot .budget-trend-label-hit { fill: var(--background-modifier-hover, rgba(0, 0, 0, 0.05)); }
 .budget-trend-layer { transition: opacity 0.12s ease; }
@@ -2620,7 +2625,7 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
   padding: 0.35em 0;
 }
 .budget-pf-kind { font-size: 0.85em; margin-top: 0.1em; }
-.budget-hidden { display: none !important; }
+.budget-hidden.budget-hidden { display: none; }
 
 /* ---- Portfolio hero ----
    Intentionally distinct from the cash hero. These balances are not spendable
@@ -3335,8 +3340,7 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    column-gap: 0.7em;
-    row-gap: 0.15em;
+    gap: 0.15em 0.7em;
   }
   .budget-deposit-row .budget-apply-label { flex-basis: auto; }
   .budget-deposit-row .budget-amount { grid-column: 2; }

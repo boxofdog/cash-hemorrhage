@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.27.4 (unreleased)
+
+### Changed
+- **Styling cleaned up for Obsidian's plugin checks.** Nothing should look
+  different. Grid gaps, hidden settings rows, the flat "link" buttons, the
+  swipeable tab and action bars and the trend chart's hover dimming now use
+  approaches that hold up on older Obsidian versions.
+
 ## 1.27.3
 
 ### Added
