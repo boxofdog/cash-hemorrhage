@@ -2188,6 +2188,8 @@ function isDiscretionaryCategory(name, categoryMeta) {
   // counting them here would reserve the same money twice.
   if (meta && meta.is_variable_necessity) return false;
   if (meta && meta.exclude_from_discretionary) return false;
+  // One-off but unavoidable (an oil change): out of the allowance, nothing more.
+  if (meta && meta.is_necessary_expense) return false;
   return !NON_DISCRETIONARY_PATTERN.test(name);
 }
 
@@ -5910,6 +5912,7 @@ function collectCategories(rules, transactions, categoryMeta) {
       e.isVariableNecessity = !!c.is_variable_necessity;
       e.variableMinAmount = c.variable_min_amount || 0;
       e.isScheduled = !!c.exclude_from_discretionary;
+      e.isNecessaryExpense = !!c.is_necessary_expense;
     }
   });
 
@@ -5951,6 +5954,42 @@ async function setCategoryNecessity(app, name, isNecessity, minAmount) {
     cats.push(Object.assign({ name, is_transfer: false }, patch));
   }
   await writeJSON(app, FILES.categories, cats);
+}
+
+// The one place a category's type is decided from the settings dialog: exactly
+// one of these, so a category can't end up both a transfer and a necessity.
+// kind: "spending" | "variable_necessity" | "scheduled_bill" | "necessary_expense" | "transfer".
+async function setCategoryKind(app, name, kind, minAmount) {
+  const cats = await readJSON(app, FILES.categories, []);
+  let idx = cats.findIndex((c) => c.name === name);
+  if (idx < 0) {
+    if (kind === "spending") return;
+    cats.push({ name, is_transfer: false });
+    idx = cats.length - 1;
+  }
+  const c = cats[idx];
+  c.is_transfer = false;
+  delete c.is_variable_necessity;
+  delete c.variable_min_amount;
+  delete c.exclude_from_discretionary;
+  delete c.is_necessary_expense;
+  if (kind === "transfer") c.is_transfer = true;
+  else if (kind === "variable_necessity") {
+    c.is_variable_necessity = true;
+    c.variable_min_amount = round2(Number(minAmount) || 0);
+  } else if (kind === "scheduled_bill") c.exclude_from_discretionary = true;
+  else if (kind === "necessary_expense") c.is_necessary_expense = true;
+  await writeJSON(app, FILES.categories, cats);
+}
+
+// What a category currently is, strongest setting first, for showing in the dialog.
+function categoryKindOf(c) {
+  if (!c) return "spending";
+  if (c.isTransfer || c.is_transfer) return "transfer";
+  if (c.isVariableNecessity || c.is_variable_necessity) return "variable_necessity";
+  if (c.isScheduled || c.exclude_from_discretionary) return "scheduled_bill";
+  if (c.isNecessaryExpense || c.is_necessary_expense) return "necessary_expense";
+  return "spending";
 }
 
 async function setCategoryTransfer(app, name, isTransfer) {
@@ -6022,6 +6061,7 @@ async function renameCategory(app, oldName, newName) {
   //   is_variable_necessity     — puts it in the forecast instead
   //   variable_min_amount       — the floor that forecast uses
   //   exclude_from_discretionary— marks it a scheduled bill
+  //   is_necessary_expense      — unavoidable one-off, out of the allowance
   //   monthly_target            — the budget target for it
   //
   // Booleans are OR'd, since a flag set on either side was meant. Values are
@@ -6033,7 +6073,7 @@ async function renameCategory(app, oldName, newName) {
     if (targetIdx >= 0 && targetIdx !== sourceIdx) {
       const from = cats[sourceIdx];
       const into = cats[targetIdx];
-      ["is_transfer", "is_variable_necessity", "exclude_from_discretionary"].forEach((flag) => {
+      ["is_transfer", "is_variable_necessity", "exclude_from_discretionary", "is_necessary_expense"].forEach((flag) => {
         if (from[flag]) into[flag] = true;
       });
       ["variable_min_amount", "monthly_target"].forEach((field) => {
@@ -6403,6 +6443,7 @@ const OWNER_TYPES = [
   "transfer",
   "card_payment",
   "variable_necessity",
+  "necessary_expense",
   "income",
   "discretionary"
 ];
@@ -6415,7 +6456,8 @@ const RESERVED_OWNER_TYPES = new Set([
   "savings",
   "subscription",
   "transfer",
-  "variable_necessity"
+  "variable_necessity",
+  "necessary_expense"
 ]);
 
 // Of those, the ones where an unlinked transaction leaves the user something to
@@ -6610,6 +6652,10 @@ function buildOwnershipIndex({
       {
         when: () => !!(meta && meta.exclude_from_discretionary),
         owner: () => ({ class: "fixed_expense", label: category, ref: null, basis: "category marked as a scheduled bill" })
+      },
+      {
+        when: () => !!(meta && meta.is_necessary_expense),
+        owner: () => ({ class: "necessary_expense", label: category, ref: null, basis: "category marked as a necessary expense" })
       },
       // Weakest of all: the category is merely NAMED like a bill.
       {
@@ -10500,6 +10546,107 @@ class OverrideModal extends Modal {
   }
 }
 
+// One dialog for what used to be five buttons on every category row: its name
+// and how it counts. Exactly one type at a time, so a category can't be both a
+// transfer and a necessity.
+const CATEGORY_KINDS = [
+  ["spending", "Spending", "Draws down your spending allowance."],
+  ["variable_necessity", "Variable necessity", "Unavoidable and regular, like gas. Projected ahead from your purchases and reserved."],
+  ["scheduled_bill", "Scheduled bill", "A recurring bill the plugin has no other record of. Stays out of your allowance."],
+  ["necessary_expense", "Necessary expense", "Unavoidable but one-off, like an oil change. Stays out of your allowance; nothing is projected or reserved."],
+  ["transfer", "Transfer", "Money moving between your own accounts."]
+];
+
+class CategorySettingsModal extends Modal {
+  constructor(app, category, allNames, onSave) {
+    super(app);
+    this.category = category;
+    this.allNames = allNames;
+    this.onSave = onSave;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const c = this.category;
+    contentEl.createEl("h2", { text: `\u201c${c.name}\u201d` });
+
+    let name = c.name;
+    let kind = categoryKindOf(c);
+    let minAmount = c.variableMinAmount || 0;
+
+    const warnEl = contentEl.createEl("p", { cls: "budget-muted budget-merge-warning" });
+    warnEl.style.display = "none";
+    const refreshWarning = () => {
+      const trimmed = name.trim();
+      const collides = trimmed && trimmed !== c.name && this.allNames.includes(trimmed);
+      if (collides) {
+        warnEl.setText(
+          `\u201c${trimmed}\u201d already exists \u2014 saving will MERGE these two categories into one. This can't be undone automatically.`
+        );
+        warnEl.style.display = "";
+      } else {
+        warnEl.style.display = "none";
+      }
+    };
+
+    new Setting(contentEl).setName("Name").addText((t) =>
+      t.setValue(name).onChange((v) => {
+        name = v;
+        refreshWarning();
+      })
+    );
+
+    const hintEl = contentEl.createEl("p", { cls: "budget-muted budget-cat-kind-hint" });
+    let minSetting = null;
+    const refreshKind = () => {
+      const row = CATEGORY_KINDS.find((k) => k[0] === kind);
+      hintEl.setText(row ? row[2] : "");
+      if (minSetting) minSetting.settingEl.toggleClass("budget-hidden", kind !== "variable_necessity");
+    };
+
+    new Setting(contentEl).setName("Treat as").addDropdown((dd) => {
+      CATEGORY_KINDS.forEach(([k, label]) => dd.addOption(k, label));
+      dd.setValue(kind).onChange((v) => {
+        kind = v;
+        refreshKind();
+      });
+    });
+    contentEl.appendChild(hintEl);
+
+    minSetting = new Setting(contentEl).setName("Ignore purchases under").addText((t) => {
+      t.setPlaceholder("$0");
+      t.setValue(minAmount ? String(minAmount) : "");
+      bindMoneyInput(t, null);
+      t.onChange((v) => {
+        const r = parseMoneyInput(v);
+        if (r.ok) minAmount = r.empty ? 0 : r.value;
+      });
+    });
+    refreshKind();
+
+    new Setting(contentEl).addButton((b) =>
+      b
+        .setButtonText("Save")
+        .setCta()
+        .onClick(() => {
+          const trimmed = name.trim();
+          if (!trimmed) {
+            new Notice("Category name can't be empty.");
+            return;
+          }
+          if (trimmed === "Uncategorized") {
+            new Notice("\u201cUncategorized\u201d is reserved \u2014 pick a different name.");
+            return;
+          }
+          this.close();
+          this.onSave({ name: trimmed, kind, minAmount: round2(minAmount || 0) });
+        })
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class RenameCategoryModal extends Modal {
   constructor(app, category, allNames, onSubmit) {
     super(app);
@@ -13169,6 +13316,7 @@ class BudgetDashboardView extends ItemView {
         subscription: "Subscriptions",
         card_payment: "Card payments",
         variable_necessity: "Variable necessities",
+        necessary_expense: "Necessary expenses",
         discretionary: "Spending allowance",
         income: "Money in"
       };
@@ -17032,15 +17180,7 @@ class BudgetSettingTab extends PluginSettingTab {
   async renderCategorySettings(containerEl) {
     containerEl = this.section(containerEl, "categories", "Categories", this.countLabel((await readJSON(this.app, FILES.categories, [])).length, "category", "categories"));
     containerEl.createEl("p", {
-      text:
-        "Rename a category to fix a typo or merge duplicates \u2014 the change applies to every rule, " +
-        "transaction and override using it. Mark a category as a transfer when it's money moving " +
-        "between your own accounts (like a credit card payment). Mark it a necessity when it's " +
-        "unavoidable but irregular (gas, pet food): those get projected ahead from your purchase " +
-        "history and reserved before savings. Mark it a scheduled bill when it's a recurring bill " +
-        "the plugin has no other record of — a phone or internet bill with no fixed expense behind " +
-        "it — which keeps it out of your spending allowance without reserving anything for it. " +
-        "All three stop a category counting against your spending allowance.",
+      text: "How each category counts. Open Settings to rename it or change how it's treated.",
       cls: "budget-muted"
     });
 
@@ -17072,6 +17212,8 @@ class BudgetSettingTab extends PluginSettingTab {
         nameLine.createSpan({ text: c.name });
         if (c.isTransfer) nameLine.createSpan({ text: "transfer", cls: "budget-badge budget-badge-transfer" });
         if (c.isScheduled) nameLine.createSpan({ text: "scheduled bill", cls: "budget-badge budget-badge-pinned" });
+        if (c.isVariableNecessity) nameLine.createSpan({ text: "necessity", cls: "budget-badge budget-badge-pinned" });
+        if (c.isNecessaryExpense) nameLine.createSpan({ text: "necessary expense", cls: "budget-badge budget-badge-pinned" });
 
         const bits = [];
         if (c.ruleCount) bits.push(`${c.ruleCount} rule${c.ruleCount === 1 ? "" : "s"}`);
@@ -17081,114 +17223,19 @@ class BudgetSettingTab extends PluginSettingTab {
 
         const btnCol = row.createDiv({ cls: "budget-cat-btn-col" });
 
-        // Variable necessity: unavoidable but irregular. Reserved as committed
-        // spending rather than counted in the discretionary buffer.
-        if (!c.isTransfer) {
-          const necBtn = btnCol.createEl("button", {
-            text: c.isVariableNecessity ? "Necessity ✓" : "Mark necessity",
-            cls: `budget-btn${c.isVariableNecessity ? " budget-btn-necessity" : ""}`
-          });
-          necBtn.setAttr(
-            "title",
-            c.isVariableNecessity
-              ? `Projected ahead each period from your purchase history. Ignores purchases under $${(c.variableMinAmount || 0).toFixed(2)}.`
-              : "Unavoidable but irregular — gas, pet food. Reserved from savings rather than from spending money."
-          );
-          necBtn.onclick = async () => {
-            if (c.isVariableNecessity) {
-              await setCategoryNecessity(this.app, c.name, false);
-              new Notice(`${c.name} is no longer a variable necessity.`);
-            } else {
-              await setCategoryNecessity(this.app, c.name, true, c.variableMinAmount || 0);
-              new Notice(`${c.name} marked as a variable necessity.`);
+        const settingsBtn = btnCol.createEl("button", { text: "Settings", cls: "budget-btn" });
+        settingsBtn.onclick = () => {
+          new CategorySettingsModal(this.app, c, allNames, async ({ name, kind, minAmount }) => {
+            let renamed = "";
+            if (name !== c.name) {
+              const { rulesUpdated, overridesUpdated, paymentCategoriesUpdated } = await renameCategory(this.app, c.name, name);
+              renamed =
+                ` Renamed \u2014 ${rulesUpdated} rule(s), ${overridesUpdated} override(s)` +
+                (paymentCategoriesUpdated ? `, ${paymentCategoriesUpdated} bill/debt still pointing at it` : "") +
+                " updated.";
             }
-            this.plugin.refreshDashboard();
-            this.display();
-          };
-
-          // For bills the app has no other record of. A tracked fixed expense,
-          // debt or subscription already confers this; declaring it here covers
-          // the case where a category IS the only record that a bill exists.
-          const schedBtn = btnCol.createEl("button", {
-            text: c.isScheduled ? "Scheduled bill \u2713" : "Scheduled bill",
-            cls: `budget-btn${c.isScheduled ? " budget-btn-necessity" : ""}`
-          });
-          schedBtn.setAttr(
-            "title",
-            c.isScheduled
-              ? "Paid from committed money. Spending here doesn't draw down your spending allowance."
-              : "A recurring bill rather than living spending \u2014 phone, internet, a car payment. Keeps it out of your spending allowance."
-          );
-          schedBtn.onclick = async () => {
-            await setCategoryScheduled(this.app, c.name, !c.isScheduled);
-            new Notice(
-              c.isScheduled
-                ? `${c.name} is back to ordinary spending.`
-                : `${c.name} marked as a scheduled bill \u2014 it no longer draws down your spending allowance.`
-            );
-            this.plugin.refreshDashboard();
-            this.display();
-          };
-
-          if (c.isVariableNecessity) {
-            const minInput = btnCol.createEl("input", {
-              type: "text",
-              cls: "budget-target-input budget-min-input",
-              attr: {
-                placeholder: "min $",
-                value: c.variableMinAmount ? String(c.variableMinAmount) : ""
-              }
-            });
-            minInput.setAttr(
-              "title",
-              "Minimum qualifying purchase — smaller ones are ignored so a partial fill doesn't skew the estimate."
-            );
-            // Not a Setting, so any message lands in the button row, which wraps.
-            bindMoneyInput({ inputEl: minInput }, null);
-            minInput.onchange = async () => {
-              const r = parseMoneyInput(minInput.value);
-              if (!r.ok) return; // already flagged under the field
-              const n = r.empty ? 0 : r.value;
-              await setCategoryNecessity(this.app, c.name, true, n);
-              new Notice(
-                n > 0 ? `${c.name}: ignoring purchases under $${round2(n).toFixed(2)}.` : `${c.name}: no minimum.`
-              );
-              this.plugin.refreshDashboard();
-              this.display();
-            };
-          }
-        }
-
-        const transferBtn = btnCol.createEl("button", {
-          text: c.isTransfer ? "Count as spending" : "Mark as transfer",
-          cls: "budget-btn"
-        });
-        transferBtn.onclick = async () => {
-          await setCategoryTransfer(this.app, c.name, !c.isTransfer);
-          new Notice(
-            c.isTransfer
-              ? `\u201c${c.name}\u201d now counts as spending again.`
-              : `\u201c${c.name}\u201d is now treated as a transfer.`
-          );
-          this.plugin.refreshDashboard();
-          this.display();
-        };
-
-        const renameBtn = btnCol.createEl("button", { text: "Rename", cls: "budget-btn" });
-        renameBtn.onclick = () => {
-          new RenameCategoryModal(this.app, c, allNames, async (newName) => {
-            const { rulesUpdated, overridesUpdated, paymentCategoriesUpdated } = await renameCategory(
-              this.app,
-              c.name,
-              newName
-            );
-            new Notice(
-              `Renamed to \u201c${newName}\u201d \u2014 ${rulesUpdated} rule(s), ${overridesUpdated} override(s)` +
-                (paymentCategoriesUpdated
-                  ? `, ${paymentCategoriesUpdated} bill/debt still pointing at it`
-                  : "") +
-                " updated."
-            );
+            await setCategoryKind(this.app, name, kind, minAmount);
+            new Notice(`Saved \u201c${name}\u201d.${renamed}`);
             this.plugin.refreshDashboard();
             this.display();
           }).open();

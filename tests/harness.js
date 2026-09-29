@@ -30,6 +30,7 @@ const EXPORTS = [
 // of main.js for differential tests, and a hard reference to something added
 // later would make the old module fail to compile rather than simply lack it.
 const OPTIONAL_EXPORTS = [
+  "setCategoryKind", "categoryKindOf", "CategorySettingsModal",
   "setSvgContent",
   "subscriptionPhaseOut", "nextRenewalDate", "inferCadenceKey", "patchSubscriptionReview", "setSubscriptionStatus",
   "confirmSubscriptionGone", "setSubscriptionCadence", "CADENCE_LABELS", "CADENCE_PRESETS", "SUBSCRIPTION_CATEGORIES", "describeCadence",

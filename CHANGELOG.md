@@ -2,7 +2,19 @@
 
 ## 1.27.3 (unreleased)
 
+### Added
+- **Necessary expense: a category type for unavoidable one-off spending.** An
+  oil change is needed but isn't a bill, isn't regular like gas, and isn't a
+  transfer. Mark its category a necessary expense and spending on it no longer
+  draws down your spending allowance. Nothing is projected or reserved for it.
+  It shows in "Where this period's money went" as **Necessary expenses**.
+
 ### Changed
+- **Categories settings is shorter.** One line of explanation, and each
+  category has just **Settings** and **Delete**. Settings holds its name and
+  what it counts as: Spending, Variable necessity, Scheduled bill, Necessary
+  expense or Transfer. It's one choice at a time, so a category can't be both a
+  transfer and a necessity.
 - **Bank sync says it can be unstable.** A short purple note under the
   SimpleFIN description: "(Unstable) Some transactions may not appear until you
   use Adjust on SimpleFIN Bridge's website."

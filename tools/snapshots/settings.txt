@@ -130,9 +130,9 @@
   <details .budget-collapsible.budget-settings-section>
     <summary .budget-collapsible-summary>
       <span .budget-collapsible-title> Categories
-      <span .budget-collapsible-sub> 4 categories
+      <span .budget-collapsible-sub> 5 categories
     <div .budget-collapsible-body>
-      <p .budget-muted> Rename a category to fix a typo or merge duplicates — the change applies to every rule, transaction and override using i
+      <p .budget-muted> How each category counts. Open Settings to rename it or change how it's treated.
       <div .budget-settings-cats>
         <div .budget-cat-row>
           <div .budget-cat-text-col>
@@ -141,8 +141,7 @@
               <span .budget-badge.budget-badge-transfer> transfer
             <div .budget-cat-usage> unused
           <div .budget-cat-btn-col>
-            <button .budget-btn> Count as spending
-            <button .budget-btn> Rename
+            <button .budget-btn> Settings
             <button .budget-btn.budget-btn-danger> Delete
         <div .budget-cat-row>
           <div .budget-cat-text-col>
@@ -150,22 +149,25 @@
               <span> Eating Out
             <div .budget-cat-usage> unused
           <div .budget-cat-btn-col>
-            <button .budget-btn> Mark necessity
-            <button .budget-btn> Scheduled bill
-            <button .budget-btn> Mark as transfer
-            <button .budget-btn> Rename
+            <button .budget-btn> Settings
             <button .budget-btn.budget-btn-danger> Delete
         <div .budget-cat-row>
           <div .budget-cat-text-col>
             <div .budget-cat-name>
               <span> Gas
+              <span .budget-badge.budget-badge-pinned> necessity
             <div .budget-cat-usage> 1 rule
           <div .budget-cat-btn-col>
-            <button .budget-btn.budget-btn-necessity> Necessity ✓
-            <button .budget-btn> Scheduled bill
-            <input .budget-min-input.budget-money-input.budget-target-input>
-            <button .budget-btn> Mark as transfer
-            <button .budget-btn> Rename
+            <button .budget-btn> Settings
+            <button .budget-btn.budget-btn-danger> Delete
+        <div .budget-cat-row>
+          <div .budget-cat-text-col>
+            <div .budget-cat-name>
+              <span> Oil change
+              <span .budget-badge.budget-badge-pinned> necessary expense
+            <div .budget-cat-usage> unused
+          <div .budget-cat-btn-col>
+            <button .budget-btn> Settings
             <button .budget-btn.budget-btn-danger> Delete
         <div .budget-cat-row>
           <div .budget-cat-text-col>
@@ -174,10 +176,7 @@
               <span .budget-badge.budget-badge-pinned> scheduled bill
             <div .budget-cat-usage> unused
           <div .budget-cat-btn-col>
-            <button .budget-btn> Mark necessity
-            <button .budget-btn.budget-btn-necessity> Scheduled bill ✓
-            <button .budget-btn> Mark as transfer
-            <button .budget-btn> Rename
+            <button .budget-btn> Settings
             <button .budget-btn.budget-btn-danger> Delete
   <details .budget-collapsible.budget-settings-section>
     <summary .budget-collapsible-summary>

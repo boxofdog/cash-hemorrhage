@@ -19,7 +19,8 @@ const DATA = {
     { name: "Eating Out", is_transfer: false, monthly_target: 200 },
     { name: "Gas", is_transfer: false, is_variable_necessity: true, variable_min_amount: 20 },
     { name: "Phone Bill", is_transfer: false, exclude_from_discretionary: true },
-    { name: "Credit Card Payment", is_transfer: true }
+    { name: "Credit Card Payment", is_transfer: true },
+    { name: "Oil change", is_transfer: false, is_necessary_expense: true }
   ],
   "Budget/data/fixed_expenses.json": [
     { id: "f1", name: "Phone Co", amount: 33.81, due_day_of_month: 4, payment_category: "Phone Bill", linked_payments: [] },

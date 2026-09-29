@@ -180,10 +180,11 @@ console.log("\n4. Budget targets live where the budget math is");
   const cats = methodBody("renderCategorySettings");
   check("no target input in settings", /budget-target-input"/.test(cats), false);
   check("no reduce dropdown in settings", /budget-reduce-select/.test(cats), false);
-  check("the necessity minimum stays", /budget-min-input/.test(cats), true);
-  ["Mark necessity", "Scheduled bill", "Mark as transfer", "Rename", "Delete"].forEach((label) =>
-    check(`${label} is still there`, cats.includes(label), true)
+  check("each row offers only Settings and Delete", [/text: "Settings"/.test(cats), /text: "Delete"/.test(cats)], [true, true]);
+  ["Mark necessity", "Scheduled bill", "Mark as transfer", "Rename"].forEach((label) =>
+    check(`${label} moved out of the row`, cats.includes(`text: "${label}"`), false)
   );
+  check("the description is one short line", /How each category counts\./.test(cats) && !/Mark a category as a transfer/.test(cats), true);
 
   const ins = methodBody("renderInsights");
   check("Insights offers a category picker", /Add a target/.test(ins), true);
