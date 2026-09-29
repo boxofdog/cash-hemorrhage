@@ -1,0 +1,54 @@
+name: Release
+
+# Publish a release on GitHub with a tag that matches the version in
+# manifest.json (no "v", e.g. 1.27.4). A minute or two later this attaches
+# main.js, manifest.json and styles.css from the tagged commit, with a build
+# attestation for each, which is what Obsidian installs from.
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches manifest.json
+        run: |
+          v=$(node -p "require('./manifest.json').version")
+          if [ "$v" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match manifest version $v" >&2
+            exit 1
+          fi
+
+      - name: Attest the release files
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Attach the files to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The release is usually created a moment after the tag, by hand on
+          # the releases page. Give it up to two minutes to appear.
+          for i in $(seq 1 24); do
+            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then break; fi
+            sleep 5
+          done
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" main.js manifest.json styles.css --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" main.js manifest.json styles.css \
+              --title "${GITHUB_REF_NAME}" --generate-notes
+          fi

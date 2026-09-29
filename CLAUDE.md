@@ -74,6 +74,12 @@ These are the user's standing expectations, learned over many versions.
      `### Changed` / `### Fixed`, with bold lead-ins, written for the user. The
      user reads these, so say what they'll see and do, not how the code works.
    - Tell the user which of the three plugin files changed.
+   - Release day: after the push, the user creates the GitHub release (tag = the
+     version, no "v", target `main`). `.github/workflows/release.yml` then
+     attaches `main.js`, `manifest.json` and `styles.css` from the tagged commit,
+     with build attestations, within a minute or two. The user checks all three
+     show under Assets; if they don't, attach them by hand. Claude can't push tags
+     or create releases from its sandbox.
 
 ## The user's preferences (important)
 
