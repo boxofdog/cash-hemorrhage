@@ -14,7 +14,7 @@ the same whether your income is steady, irregular or a mix.
 - **Give yourself an allowance.** Because the leftover figure is real, a weekly
   allowance out of it actually means something.
 - **See what you had to spend versus what you chose to.** Spending on things you
-  were committed to (rent, bills, debt payments) is kept apart from spending you
+  were committed to (bills, debt payments, loan installments) is kept apart from spending you
   didn't need to make.
 
 ## What it does
@@ -53,7 +53,7 @@ so you always know where your money went, and you never have to go back through
 an algorithm's mistakes and shift spending between buckets.
 
 You sort each merchant **once**: pick a category, and choose **Apply to all** so
-its past and future transactions follow. Setup takes some effort up front,
+matching transactions follow. Setup takes some effort up front,
 because it's the number of *different merchants* that matters, not the number of
 transactions. After that, very little is left to do.
 
