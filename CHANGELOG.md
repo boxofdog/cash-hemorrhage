@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.27.4 (unreleased)
+## 1.27.4
 
 ### Changed
 - **Styling cleaned up for Obsidian's plugin checks.** Nothing should look
