@@ -6401,6 +6401,7 @@ const OWNER_TYPES = [
   "savings",
   "subscription",
   "transfer",
+  "card_payment",
   "variable_necessity",
   "income",
   "discretionary"
@@ -6728,7 +6729,11 @@ function buildPeriodObligations({
 // Which single bucket absorbed each outgoing transaction this period.
 // Exists so the question "where did this money go?" has one checkable answer
 // rather than being reconstructed differently by whoever is asking.
-function summarizeOwnership(transactions, periodStartStr, nextPaydayStr, ownership) {
+// Moving cash between your own accounts is net-neutral, so those rows are left
+// out. A card payment is the exception: cash did leave, so it is listed and
+// counted, as its own "card_payment" line (shown apart, since it pays off
+// spending already made on the card). cardPaymentCategories names those.
+function summarizeOwnership(transactions, periodStartStr, nextPaydayStr, ownership, cardPaymentCategories = null) {
   const byType = {};
   let total = 0;
   let count = 0;
@@ -6740,7 +6745,12 @@ function summarizeOwnership(transactions, periodStartStr, nextPaydayStr, ownersh
     const amount = round2(Math.abs(t.amount));
     if (amount <= 0) return;
     const owner = ownership.ownerOf(t);
-    const type = owner ? owner.class : "discretionary";
+    let type = owner ? owner.class : "discretionary";
+    if (type === "transfer") {
+      const isCard = cardPaymentCategories && cardPaymentCategories.has(t.override_label || t.resolved_category);
+      if (!isCard) return;
+      type = "card_payment";
+    }
     if (!byType[type]) byType[type] = { type, amount: 0, count: 0, explicit: 0 };
     byType[type].amount = round2(byType[type].amount + amount);
     byType[type].count++;
@@ -7323,7 +7333,13 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
     bufferSpending,
     bufferAllocation,
     periodObligations,
-    ownershipSummary: summarizeOwnership(transactions, todayStr, nextPaydayStr, ownership),
+    ownershipSummary: summarizeOwnership(
+      transactions,
+      todayStr,
+      nextPaydayStr,
+      ownership,
+      new Set(["Credit Card Payment"].concat((revolvingDebts || []).map((d) => d && d.payment_category).filter(Boolean)))
+    ),
     unreconciled: findUnreconciledObligations({
       periodObligations,
       unsettled: bufferSpending.unsettled
@@ -13146,7 +13162,7 @@ class BudgetDashboardView extends ItemView {
         fixed_expense: "Fixed bills",
         savings: "Savings transfers",
         subscription: "Subscriptions",
-        transfer: "Transfers between accounts",
+        card_payment: "Card payments",
         variable_necessity: "Variable necessities",
         discretionary: "Spending allowance",
         income: "Money in"
@@ -13159,7 +13175,8 @@ class BudgetDashboardView extends ItemView {
         false
       );
       own.byType.forEach((b) => {
-        const row = ownBox.createDiv({ cls: "budget-fixed-row" });
+        const isCard = b.type === "card_payment";
+        const row = ownBox.createDiv({ cls: "budget-fixed-row" + (isCard ? " budget-owner-card" : "") });
         const col = row.createDiv({ cls: "budget-fixed-name budget-buffer-text" });
         col.createDiv({ text: OWNER_LABELS[b.type] || b.type });
         col.createDiv({
@@ -13168,6 +13185,7 @@ class BudgetDashboardView extends ItemView {
             (b.explicit ? ` · ${b.explicit} linked` : b.type === "discretionary" ? "" : " · matched by category"),
           cls: "budget-buffer-sub"
         });
+        if (isCard) col.createDiv({ text: "Pays off spending already counted on the card", cls: "budget-buffer-sub budget-owner-card-note" });
         row.createSpan({ text: `$${b.amount.toFixed(2)}`, cls: "budget-amount" });
       });
     }

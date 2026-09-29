@@ -3491,3 +3491,10 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 @media (max-width: 700px) {
   .budget-fund-card .budget-sub-head { align-items: flex-start; }
 }
+
+/* Card payments in "Where this period's money went": cash that left, but it
+   pays off spending already counted, so it reads apart from real spending. */
+.budget-owner-card .budget-amount,
+.budget-owner-card .budget-owner-card-note {
+  color: var(--color-purple);
+}

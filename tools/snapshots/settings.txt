@@ -23,7 +23,7 @@
     <span .setting-name> Deadline (optional)
     <span .setting-desc> Shows a countdown to it. Goals are paced by their own target dates; a goal with none stays undated. Leave blank for open
     <span .setting-value> 2026-11-26
-  <p .budget-apply-scope.budget-muted> 59 days from today.
+  <p .budget-apply-scope.budget-muted> 58 days from today.
   <h3> Pay schedule
   <p .budget-muted> Your payday follows a fixed cycle even though the amount varies, so set it once here and the next payday is calculated f
   <div .setting-item>

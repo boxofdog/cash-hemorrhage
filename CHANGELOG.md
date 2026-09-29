@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.27.1
+
+### Fixed
+- **Moves between your own accounts no longer show in "Where this period's
+  money went."** They're the same money in a different place, so they're left
+  out of the list, the total and the count.
+- **Card payments are shown apart.** They're still listed and counted, since the
+  cash did leave, but as their own **Card payments** line with the amount in
+  purple and a short note: "Pays off spending already counted on the card."
+
 ## 1.27.0
 
 ### Added

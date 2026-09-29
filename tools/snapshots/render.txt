@@ -1,7 +1,7 @@
 <div>
   <div .budget-period-bar>
     <span> Pay period 2026-09-15 → 2026-09-29
-    <span .budget-period-days> 1 day to next payday
+    <span .budget-period-days> next payday is today
   <div .budget-hero>
     <div .budget-hero-figures>
       <div .budget-hero-block>
@@ -19,10 +19,11 @@
           <span .budget-collapsible-title> Where this period's money went
           <span .budget-collapsible-sub> $1054.77 across 1 transaction
         <div .budget-collapsible-body>
-          <div .budget-fixed-row>
+          <div .budget-fixed-row.budget-owner-card>
             <div .budget-buffer-text.budget-fixed-name>
-              <div> Transfers between accounts
+              <div> Card payments
               <div .budget-buffer-sub> 1 transaction · matched by category
+              <div .budget-buffer-sub.budget-owner-card-note> Pays off spending already counted on the card
             <span .budget-amount> $1054.77
   <div .budget-warning> Short by about $1369.82: fixed costs, minimum payments, subscriptions, earmarked savings and projected necessities exceed your cash on hand.
   <div>
@@ -95,7 +96,7 @@
       <div .budget-progress-track>
         <div .budget-progress-fill>
       <div .budget-goal-meta>
-        <span> $2750.00 to go · 5 paychecks before 2026-11-26 · $550.00 each (cadence inferred from your paycheck history)
+        <span> $2750.00 to go · 4 paychecks before 2026-11-26 · $687.50 each (cadence inferred from your paycheck history)
       <div .budget-goal-btns>
         <button .budget-btn> Pin to dashboard
         <button .budget-btn.mod-cta> Add Funds

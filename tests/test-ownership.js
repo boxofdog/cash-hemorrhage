@@ -232,7 +232,7 @@ console.log("\n10. Reconciliation — every outflow has one owner");
   check("every outgoing dollar is attributed", total, round2(40 + 52 + 900 + 15.99));
   check("transaction count matches", r.ownershipSummary.count, 4);
   const types = r.ownershipSummary.byType.map((b) => b.type).sort();
-  check("four distinct buckets", types.join(","), "discretionary,subscription,transfer,variable_necessity");
+  check("four distinct buckets (a card payment shows apart)", types.join(","), "card_payment,discretionary,subscription,variable_necessity");
 }
 
 console.log("\nClass and settlement are independent facts");
@@ -406,6 +406,35 @@ console.log("\nLinking a payment teaches the expense its category");
   const set = { id: "f_s", name: "Set", amount: 10, due_day_of_month: 4, payment_category: "Utilities", linked_payments: [] };
   H.recordFixedPayment(set, "2026-09-04", tx("2026-09-04", -10, "Phone Bill", "X"));
   check("does not overwrite an existing category", set.payment_category, "Utilities");
+}
+
+console.log("\nMoney went: transfers and card payments");
+{
+  const txs = [
+    tx("2026-09-16", -40, "Eating Out"),
+    tx("2026-09-17", -900, "Credit Card Payment"),
+    tx("2026-09-18", -250, "Savings")   // a move to your own savings account
+  ];
+  const r = alloc({ cashOnHand: 100, transactions: txs });
+  const types = r.ownershipSummary.byType.map((b) => b.type).sort();
+  check("a card payment shows as its own line", types.includes("card_payment"), true);
+  check("an account-to-account transfer is not listed", types.includes("transfer"), false);
+  check("the card payment counts in the total", r.ownershipSummary.total, 940);
+  check("and in the count; the transfer is in neither", r.ownershipSummary.count, 2);
+  check("the card payment line holds only the payment", r.ownershipSummary.byType.find((b) => b.type === "card_payment").amount, 900);
+
+  const own = idx();
+  const bare = summarizeOwnership(txs, START, END, own);
+  check("without card categories (old callers) transfers are simply left out", bare.byType.map((b) => b.type).sort().join(","), "discretionary");
+
+  const custom = [tx("2026-09-17", -120, "Visa Payment")];
+  const meta = CATS.concat([{ name: "Visa Payment", is_transfer: true }]);
+  const own2 = idx({ categoryMeta: meta });
+  const withCard = summarizeOwnership(custom, START, END, own2, new Set(["Visa Payment"]));
+  check("a card's own payment category counts as a card payment", withCard.byType.map((b) => b.type).join(","), "card_payment");
+  check("the allowance is untouched by the display change",
+    alloc({ cashOnHand: 100, transactions: txs }).ownershipSummary.total,
+    alloc({ cashOnHand: 100, transactions: txs.slice(0, 2) }).ownershipSummary.total);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

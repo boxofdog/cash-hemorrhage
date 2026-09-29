@@ -381,7 +381,7 @@
   "ownershipSummary": {
     "byType": [
       {
-        "type": "transfer",
+        "type": "card_payment",
         "amount": 1054.77,
         "count": 1,
         "explicit": 0
