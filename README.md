@@ -17,6 +17,26 @@ the same whether your income is steady, irregular or a mix.
   were committed to (bills, debt payments, loan installments) is kept apart from spending you
   didn't need to make.
 
+## Two postures toward your money
+
+Once your obligations and spending allowance are covered, whatever is left is
+your surplus. Two strategies decide where it goes. Neither is the default: pick
+the one that matches where you are, and switch whenever that changes. The
+whole dashboard updates instantly.
+
+- **Debt Reduction.** Surplus goes to principal beyond the minimums, highest
+  interest rate first across your cards and loans. Capped funds, like an
+  emergency cushion, refill before extra principal.
+- **Savings Focus.** Extra debt payoff pauses and surplus goes to your savings
+  goals instead. Goals with a target date get the pace they need first. Then
+  capped funds refill, then dated goals get ahead of schedule, and undated goals
+  come last. You can also set a deadline that counts down on the dashboard.
+
+Minimum payments are treated as obligations in both. Savings Focus pauses
+extra payments and never skips anything you owe. Switch with the control at the
+top of the dashboard, or the command **Toggle strategy: debt reduction or
+savings focus**.
+
 ## What it does
 
 - **Pay-period dashboard.** Bills, debt minimums, savings and what's safe to
