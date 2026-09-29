@@ -3,7 +3,6 @@
   "private": true,
   "description": "Dev tooling for the Budget Tracker Obsidian plugin. The plugin itself is main.js, styles.css and manifest.json and has no build step.",
   "scripts": {
-    "build": "node --check main.js && echo \"No build step: main.js, styles.css and manifest.json are the plugin as written.\"",
     "test": "node tests/run-tests.js",
     "tdz": "node tools/tdz-scan.js",
     "snapshots": "node tools/snapshot.js",
