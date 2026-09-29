@@ -1,8 +1,21 @@
 # Budget Tracker
 
-A per-paycheck budget dashboard for [Obsidian](https://obsidian.md). Each pay
-period it works out what you owe before the next payday and what's left to
-spend, so variable or irregular income doesn't break the budget.
+A per-paycheck budget dashboard for [Obsidian](https://obsidian.md). It answers
+one question: **what do I actually have available right now, after everything
+I'm committed to paying?**
+
+Your bank balance isn't that number. Bills, debt payments and loan installments
+are coming before your next payday, and this plugin sets them aside first. What
+remains for the current pay period is the money you can really spend. It works
+the same whether your income is steady, irregular or a mix.
+
+- **Know what's coming.** Upcoming bills, minimums and loan payments are
+  reserved ahead of time, so you can see them before they hit.
+- **Give yourself an allowance.** Because the leftover figure is real, a weekly
+  allowance out of it actually means something.
+- **See what you had to spend versus what you chose to.** Spending on things you
+  were committed to (rent, bills, debt payments) is kept apart from spending you
+  didn't need to make.
 
 ## What it does
 
@@ -32,6 +45,17 @@ Until it appears in Obsidian's community plugin list:
 2. Put them in `<your vault>/.obsidian/plugins/budget-tracker/`.
 3. Enable **Budget Tracker** in Settings → Community plugins.
 4. Run the command **Set up data files and folders**.
+
+## You sort your own transactions, on purpose
+
+Budget Tracker doesn't guess your categories. Every merchant is labeled by you,
+so you always know where your money went, and you never have to go back through
+an algorithm's mistakes and shift spending between buckets.
+
+You sort each merchant **once**: pick a category, and choose **Apply to all** so
+its past and future transactions follow. Setup takes some effort up front,
+because it's the number of *different merchants* that matters, not the number of
+transactions. After that, very little is left to do.
 
 ## Getting started
 
