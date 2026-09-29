@@ -64,7 +64,12 @@ These are the user's standing expectations, learned over many versions.
    money numbers, have a separate agent audit it with runnable repro scripts.
    Two rounds of that found 21 real loan bugs.
 5. **Ship a version.**
-   - Bump `manifest.json`: minor for a feature, patch for a fix.
+   - Bump `manifest.json`: minor for a feature, patch for a fix. Do it **only on
+     release day**, in the same step as publishing the GitHub release. Obsidian
+     reads the latest version from `manifest.json` on `main` and downloads that
+     version's release files, so a manifest ahead of the last release shows every
+     user an Update button that fails. Until then the manifest stays at the last
+     released version and the changelog heading reads `## x.y.z (unreleased)`.
    - Add a `CHANGELOG.md` entry at the top: `## x.y.z`, then `### Added` /
      `### Changed` / `### Fixed`, with bold lead-ins, written for the user. The
      user reads these, so say what they'll see and do, not how the code works.
