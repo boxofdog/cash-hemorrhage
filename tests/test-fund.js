@@ -770,6 +770,7 @@ async function overview({ placement = "cards", balance = 640.12, asOf = T, break
   check("Move, Edit, Delete — no Add Funds, no pin", buttonsIn(card).map((b) => b._text), ["Move", "Edit", "Delete"]);
   check("the bar says what it measures", [byCls(card, "budget-fund-track")[0].attrs.role, byCls(card, "budget-fund-track")[0].attrs["aria-valuenow"]], ["progressbar", "640.12"]);
   check("not in the hero", byCls(byCls(root, "budget-hero")[0], "budget-fund-hero").length, 0);
+  check("and the figures row keeps its normal size", byCls(root, "budget-hero-figures-tall").length, 0);
   check("not in the goals list", byCls(byCls(root, "budget-goals-card")[0], "budget-fund-row").length, 0);
   check("the hero's basis names it", /− \$54\.50 to Oopsie Fund/.test(text(byCls(root, "budget-hero-basis")[0])), true);
   check("and doesn't call it goals", /to goals/.test(text(byCls(root, "budget-hero-basis")[0])), false);
@@ -794,6 +795,7 @@ async function overview({ placement = "cards", balance = 640.12, asOf = T, break
   ({ root, calls } = await overview({ placement: "hero", breakdown: ask }));
   const hero = byCls(root, "budget-fund-hero")[0];
   check("in the hero: a figure among the figures", hero.parent.classes.has("budget-hero-figures"), true);
+  check("with a fund in the hero the figures row is marked to scale up", hero.parent.classes.has("budget-hero-figures-tall"), true);
   check("label, number, bar, cap, ask",
     [text(byCls(hero, "budget-fund-label")[0]).replace("⠿", "").trim(), text(byCls(hero, "budget-fund-number")[0]), byCls(hero, "budget-fund-hero-track").length,
       byCls(hero, "budget-hero-sub").map(text)],

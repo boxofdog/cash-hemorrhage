@@ -12984,7 +12984,12 @@ class BudgetDashboardView extends ItemView {
     // of it this period, not the untouched original.
     // The figures share a row of their own, so the hero can stack: numbers,
     // then what they were derived from, then the ways to check them.
-    const figures = hero.createDiv({ cls: "budget-hero-figures" });
+    // A fund dragged into the hero is a taller tile than the figures beside it
+    // (a bar, its status and two buttons under the number). The figures grow to
+    // match, rather than leaving a gap under them.
+    const funds = cappedFunds(ctx && ctx.savingsGoals);
+    const heroFunds = funds.filter((f) => fundPlacement(f) === "hero");
+    const figures = hero.createDiv({ cls: "budget-hero-figures" + (heroFunds.length ? " budget-hero-figures-tall" : "") });
     const spendBlock = figures.createDiv({ cls: "budget-hero-block" });
     spendBlock.createEl("div", { text: "Spendable till payday", cls: "budget-hero-label" });
     const remainingBuffer = r.bufferRemaining != null ? r.bufferRemaining : r.effectiveBuffer || 0;
@@ -13021,8 +13026,7 @@ class BudgetDashboardView extends ItemView {
     flexBlock.createEl("div", { text: "Total flexibility (incl. credit)", cls: "budget-hero-label" });
     flexBlock.createEl("div", { text: `$${r.totalFlexibility.toFixed(2)}`, cls: "budget-hero-number" });
 
-    const funds = cappedFunds(ctx && ctx.savingsGoals);
-    funds.filter((f) => fundPlacement(f) === "hero").forEach((f) => this.renderFundHero(figures, f, ctx, r));
+    heroFunds.forEach((f) => this.renderFundHero(figures, f, ctx, r));
     if (funds.length) this.fundDropSlot(figures, "hero", "Drop here to show it in the hero");
 
     // Where the headline number came from. It sat inside the free-cash block

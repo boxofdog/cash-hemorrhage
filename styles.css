@@ -116,6 +116,38 @@
   align-items: flex-start;
 }
 
+/* With a fund in the hero the row is as tall as the fund tile, so the two
+   headline numbers scale up to fill it instead of sitting above dead space.
+   Sized off the row's own width (cqw) so three columns never overflow: in a
+   narrow pane it falls back to the normal size. Phones stack the figures, so
+   they keep their own sizes below. */
+.budget-hero-figures-tall {
+  container-type: inline-size;
+  align-items: stretch;
+}
+
+@media (min-width: 701px) {
+  /* The number takes the space between its label and any note under it and
+     sits in the middle of it, so what's left over reads as breathing room
+     around a large figure, not a gap below a small one. */
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-number,
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-number-sm {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+  }
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-number {
+    font-size: clamp(2.7em, 6cqw, 4.4em);
+  }
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-number-sm {
+    font-size: clamp(1.6em, 3.4cqw, 2.6em);
+  }
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-label,
+  .budget-hero-figures-tall > .budget-hero-block:not(.budget-fund) .budget-hero-sub {
+    font-size: clamp(0.85em, 1.3cqw, 1em);
+  }
+}
+
 .budget-hero-secondary {
   opacity: 0.92;
   padding-left: 1.4em;

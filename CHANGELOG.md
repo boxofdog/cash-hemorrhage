@@ -9,6 +9,10 @@
 - **Card payments are shown apart.** They're still listed and counted, since the
   cash did leave, but as their own **Card payments** line with the amount in
   purple and a short note: "Pays off spending already counted on the card."
+- **A fund in the hero no longer leaves a gap under the other figures.** With a
+  capped fund dragged into the hero, Spendable and Total flexibility now grow
+  to match its height, with the number centered under its label. On a phone,
+  where the figures stack, nothing changes.
 - **The Debt Reduction / Savings Focus switch looks like a switch in Obsidian.**
   Obsidian's own button styling was drawing both halves as raised buttons, so
   the one that wasn't selected didn't look off. The unselected side is now flat
