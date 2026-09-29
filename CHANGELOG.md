@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.27.3 (unreleased)
+## 1.27.3
 
 ### Added
 - **Necessary expense: a category type for unavoidable one-off spending.** An
