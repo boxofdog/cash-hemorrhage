@@ -262,10 +262,12 @@ console.log("\n5. Typing a balance");
 // ===========================================================================
 console.log("\n6. Where it shows");
 {
-  check("from SimpleFIN", H.balanceSourceText("simplefin", "2026-09-28T16:14:00.000Z").startsWith("from SimpleFIN · "), true);
+  check("from SimpleFIN", H.balanceSourceText("simplefin", `${T}T16:14:00.000Z`).startsWith("from SimpleFIN · "), true);
   check("typed", [H.balanceSourceText("manual", null), H.balanceSourceText("paycheck", null), H.balanceSourceText(null, null)], ["entered by hand", "typed in Enter Paycheck", ""]);
-  const d = new Date(2026, 8, 28, 9, 14);
-  check("with a short date and time", H.formatStampShort(d.toISOString()), `${H.formatChartDate("2026-09-28").replace(`, ${T.slice(0, 4)}`, "")}, 9:14 AM`);
+  // Today at 9:14, so the balance is fresh whenever the suite runs. A fixed
+  // date goes stale and picks up an "N days old" note.
+  const d = new Date(`${T}T09:14:00`);
+  check("with a short date and time", H.formatStampShort(d.toISOString()), `${H.formatChartDate(T).replace(`, ${T.slice(0, 4)}`, "")}, 9:14 AM`);
   const old = new Date(`${D(-5)}T09:00:00`).toISOString();
   check("an old synced balance says how old", H.balanceSourceText("simplefin", old), `from SimpleFIN · ${H.formatStampShort(old)} (5 days old)`);
 

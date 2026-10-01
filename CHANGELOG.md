@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.27.5 (unreleased)
+
+### Fixed
+- **Insights opens on the new month from the 1st.** It used to stay on last
+  month until the first transaction of the new one arrived, because it only
+  listed months that already had transactions. The current month is now always
+  there and selected, with nothing spent yet, and you can still pick an earlier
+  month.
+
 ## 1.27.4
 
 ### Changed

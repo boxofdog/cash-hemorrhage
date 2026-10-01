@@ -1,5 +1,13 @@
 // Renders the Settings tab against the DOM shim and prints a stable text
 // snapshot, the same way render-snapshot.js does for the Overview.
+// Pin "today" so the snapshot doesn't change with the calendar: the Overview
+// and Settings text includes days-to-payday and the next paydays.
+const __RealDate = Date;
+const __FIXED_NOW = new __RealDate("2026-09-29T12:00:00").getTime();
+global.Date = class extends __RealDate {
+  constructor(...a) { if (a.length === 0) super(__FIXED_NOW); else super(...a); }
+  static now() { return __FIXED_NOW; }
+};
 const P = require("../tests/paths.js");
 const mainPath = process.argv[2] || P.MAIN;
 const H = require(P.TESTS + "/harness-for.js")(mainPath);

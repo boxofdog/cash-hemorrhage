@@ -81,6 +81,37 @@ console.log("\n2. Edges");
   check("targetMonthName", [H.targetMonthName("2026-08", "2026-09"), H.targetMonthName("2025-12", "2026-01"), H.targetMonthName(null, "2026-01")], ["August", "December 2025", ""]);
 }
 
+console.log("\n6. The first of a new month");
+{
+  // Last month has transactions; this month has none yet, as on the 1st before
+  // anything has posted. Insights should already be on the new month.
+  const nowKey = H.todayLocal().slice(0, 7);
+  const prev = H.addDays(nowKey + "-01", -3).slice(0, 7);
+  const txs = [tx(prev + "-10", -80, "Eating Out"), tx(prev + "-12", -40, "Eating Out")];
+  const cats = [{ name: "Eating Out", monthly_target: 150 }];
+  const v = Object.create(H.BudgetDashboardView.prototype);
+  Object.assign(v, { app: {}, plugin: { settings: {} }, sectionOpen: {}, scrollMemory: {}, insightsMonth: null });
+  v.render = () => {};
+  const root = el("div");
+  await v.renderInsights(root, { allTx: txs, categoryMetaList: cats, rules: [], ownership: null });
+  const sel = byCls(root, "budget-range-select")[0];
+  check("this month is selected before it has any transactions", sel.value, nowKey);
+  check("and offered alongside last month", sel.children.length, 2);
+  const rows = byCls(root, "budget-target-row");
+  check("its target row reads nothing spent yet", /\$0\.00 \/ \$150\.00/.test(text(rows[0])), true);
+
+  // An explicit pick of last month still wins.
+  Object.assign(v, { insightsMonth: prev });
+  const root2 = el("div");
+  await v.renderInsights(root2, { allTx: txs, categoryMetaList: cats, rules: [], ownership: null });
+  check("choosing last month keeps last month", byCls(root2, "budget-range-select")[0].value, prev);
+
+  // Nothing imported at all still says so, rather than showing an empty month.
+  const root3 = el("div");
+  await v.renderInsights(root3, { allTx: [], categoryMetaList: cats, rules: [], ownership: null });
+  check("no data at all: the import prompt", /No transactions imported yet/.test(text(root3)), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

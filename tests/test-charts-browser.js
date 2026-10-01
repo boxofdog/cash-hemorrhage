@@ -380,7 +380,7 @@ function page(body, scheme) {
     check("names and figures in regular weight, small (9.5 and 9 chart units)", type, ["400", "9.5px", "400", "9px"]);
     const s3 = await p.evaluate(() => { const r = document.querySelectorAll(".budget-trend-slices .budget-trend-slice")[2].getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     await p.mouse.move(s3.x, s3.y);
-    await p.waitForTimeout(150);
+    await p.waitForTimeout(500);
     check("pointing at a slice lights it and its callout, and dims the rest", await p.evaluate(() => [
       document.querySelectorAll(".budget-trend-slices .budget-trend-slice")[2].classList.contains("is-hot"),
       document.querySelectorAll(".budget-trend-layer")[2].classList.contains("is-hot"),

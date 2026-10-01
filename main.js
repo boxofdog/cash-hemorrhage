@@ -2157,11 +2157,15 @@ function applyCategorization(transactions, rules) {
 // ---------- insights ----------
 
 // Months present in the data, newest first, as {key:'2026-09', label:'September 2026'}
-function availableMonths(transactions) {
+// Months that have transactions, newest first. `alsoKey` is added even when
+// it has none yet, so the current month is there on the 1st, before the first
+// purchase lands, instead of the view staying on last month.
+function availableMonths(transactions, alsoKey = null) {
   const set = new Set();
   transactions.forEach((t) => {
     if (t.date && /^\d{4}-\d{2}/.test(t.date)) set.add(t.date.slice(0, 7));
   });
+  if (alsoKey && /^\d{4}-\d{2}$/.test(alsoKey) && set.size) set.add(alsoKey);
   const names = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   return [...set]
     .sort()
@@ -15614,7 +15618,8 @@ class BudgetDashboardView extends ItemView {
   async renderInsights(container, ctx) {
     const { allTx, categoryMetaList } = ctx;
 
-    const months = availableMonths(allTx);
+    const currentKey = todayLocal().slice(0, 7);
+    const months = availableMonths(allTx, currentKey);
     if (months.length === 0) {
       container.createDiv({ cls: "budget-card" }).createEl("p", {
         text: "No transactions imported yet \u2014 import a bank export to see monthly insights.",
@@ -15623,7 +15628,6 @@ class BudgetDashboardView extends ItemView {
       return;
     }
 
-    const currentKey = todayLocal().slice(0, 7);
     const selected =
       this.insightsMonth && months.some((m) => m.key === this.insightsMonth)
         ? this.insightsMonth
