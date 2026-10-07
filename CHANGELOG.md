@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.27.5 (unreleased)
+## 1.27.5
 
 ### Added
 - **A short tour for new installs.** Eight pages on how the budget thinks and

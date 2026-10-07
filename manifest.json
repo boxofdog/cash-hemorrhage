@@ -1,7 +1,7 @@
 {
   "id": "budget-tracker",
   "name": "Budget Tracker",
-  "version": "1.27.4",
+  "version": "1.27.5",
   "minAppVersion": "1.4.0",
   "description": "A rolling per-paycheck budget tracker. Allocate savings, audit debt and subscriptions, track spending, and import transactions directly from your bank or portfolio.",
   "author": "BoxOfDOG",
