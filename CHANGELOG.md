@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.6 (unreleased)
+
+### Changed
+- **The Budget folder's README now warns about imports.** A clean import deletes
+  the CSV from `Budget/imports/`, so keep your own copy somewhere else.
+
 ## 1.27.5
 
 ### Added

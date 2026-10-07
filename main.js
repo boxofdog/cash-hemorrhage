@@ -1603,7 +1603,7 @@ const SETUP_README_TEXT = `# Budget Tracker
 This folder holds everything the Budget Tracker plugin keeps.
 
 - **data/**: the plugin's own files (accounts, debts, bills, goals, transactions, rules). Change them from the plugin rather than by hand.
-- **imports/**: drop bank CSV exports here, then run **Import CSV** from the dashboard.
+- **imports/**: drop bank CSV exports here, then run **Import CSV**. A clean import deletes the CSV, so keep your own copy in another folder.
 - **exports/**: **Export Snapshot** saves a Markdown summary and a CSV copy here.
 
 Open the dashboard from the wallet icon in the ribbon, or the command palette: "Budget Tracker: Open in sidebar". Settings → Budget Tracker has everything else.

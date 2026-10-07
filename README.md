@@ -83,7 +83,11 @@ transactions. After that, very little is left to do.
 2. Add your accounts, cards, bills and loans with the commands of the same
    names (open the command palette and type "Add").
 3. Import a bank CSV, or connect SimpleFIN (below).
-4. Open the dashboard with **Open dashboard**.
+4. Open Budget Tracker from the ribbon icon, or with **Open in sidebar**.
+
+**Keep your own copy of your CSVs.** After a clean import, the plugin deletes
+the CSV from `Budget/imports/`. If you want to keep the files, store them in
+another folder.
 
 ## Network use and your data
 
