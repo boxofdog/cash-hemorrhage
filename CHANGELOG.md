@@ -5,6 +5,9 @@
 ### Changed
 - **The Budget folder's README now warns about imports.** A clean import deletes
   the CSV from `Budget/imports/`, so keep your own copy somewhere else.
+- **The tour and README now mention Obsidian Sync.** Your data is stored as JSON
+  files, which Sync skips unless **Sync all other types** is on in Settings →
+  Sync. The README also says how to see the files in Obsidian.
 
 ## 1.27.5
 

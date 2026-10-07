@@ -96,6 +96,10 @@ Please read this: the plugin handles financial data.
 - **Your data stays in your vault.** Everything is stored as JSON under
   `Budget/data/` and `Budget/imports/` in your vault. Nothing is sent to the
   author or to any analytics service.
+- **Using Obsidian Sync?** Your data is stored as JSON files, which Sync skips
+  by default. Turn on **Sync all other types** under Settings → Sync, or your
+  data won't reach your other devices. To see the files in Obsidian, turn on
+  **Show all file types** under Settings → Files and links → Links.
 - **SimpleFIN Bridge (optional).** If you connect it, the plugin makes network
   requests to the SimpleFIN Bridge server you configure, to claim your setup
   token and to fetch your accounts, balances and transactions. This is off

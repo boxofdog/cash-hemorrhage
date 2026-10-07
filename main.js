@@ -9175,7 +9175,7 @@ function bindPatternReach(setting, { transactions, rules, selfIndex = null, samp
 const TOUR_PAGES = [
   { title: "Welcome", body: "Budget Tracker works out what you owe before your next paycheck and what's left to spend. This quick tour takes a minute." },
   { title: "How it thinks", body: "Bills, debt payments and savings come first. What's left is yours to spend until payday." },
-  { title: "Set up your files", body: "Press **Set up** in settings once. It creates the Budget folder in your vault, where your data stays." },
+  { title: "Set up your files", body: "Press **Set up** in settings once. It creates the Budget folder in your vault, where your data stays. If you use Obsidian Sync, turn on **Sync all other types** in Settings → Sync, or your data won't reach your other devices." },
   { title: "Enter your most recent paycheck", body: "Run **Enter paycheck** and give it two dates: when your latest paycheck arrived, and when you expect the next one. From those two dates the plugin works out your pay cadence, and every pay period after that follows it." },
   { title: "Add what you owe", body: "On the Debts tab, add cards, loans and buy-now-pay-later plans. Bills and subscriptions go in Settings." },
   { title: "Bring in transactions", body: "Import a CSV from your bank, or connect SimpleFIN to sync. Then label each merchant yourself and set a rule for it. It's upfront work, but once your transactions are classified, the plugin sorts new ones for you." },
