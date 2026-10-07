@@ -1606,7 +1606,7 @@ This folder holds everything the Budget Tracker plugin keeps.
 - **imports/**: drop bank CSV exports here, then run **Import CSV** from the dashboard.
 - **exports/**: **Export Snapshot** saves a Markdown summary and a CSV copy here.
 
-Open the dashboard from the wallet icon in the ribbon, or the command palette: "Budget Tracker: Open Budget Dashboard". Settings → Budget Tracker has everything else.
+Open the dashboard from the wallet icon in the ribbon, or the command palette: "Budget Tracker: Open in sidebar". Settings → Budget Tracker has everything else.
 `;
 
 // What's there and what isn't, without changing anything.
@@ -9170,6 +9170,68 @@ function bindPatternReach(setting, { transactions, rules, selfIndex = null, samp
   };
 }
 
+// The first-run tour. Plain data so the wording is easy to find and test;
+// **double asterisks** mark the names of things you'll see on screen.
+const TOUR_PAGES = [
+  { title: "Welcome", body: "Budget Tracker works out what you owe before your next paycheck and what's left to spend. This quick tour takes a minute." },
+  { title: "How it thinks", body: "Bills, debt payments and savings come first. What's left is yours to spend until payday." },
+  { title: "Set up your files", body: "Press **Set up** in settings once. It creates the Budget folder in your vault, where your data stays." },
+  { title: "Enter your most recent paycheck", body: "Run **Enter paycheck** and give it two dates: when your latest paycheck arrived, and when you expect the next one. From those two dates the plugin works out your pay cadence, and every pay period after that follows it." },
+  { title: "Add what you owe", body: "On the Debts tab, add cards, loans and buy-now-pay-later plans. Bills and subscriptions go in Settings." },
+  { title: "Bring in transactions", body: "Import a CSV from your bank, or connect SimpleFIN to sync. Then label each merchant yourself and set a rule for it. It's upfront work, but once your transactions are classified, the plugin sorts new ones for you." },
+  { title: "Pick your focus", body: "Debt reduction sends spare cash to debt. Savings focus sends it to your goals. Switch any time and everything updates." },
+  { title: "You're set", body: "Reopen this tour any time from the command palette: **Budget Tracker: Show tour**." }
+];
+
+// Splits "a **b** c" into [text, bold] pieces for building spans without innerHTML.
+function tourSegments(text) {
+  return String(text).split("**").map((t, i) => ({ text: t, bold: i % 2 === 1 })).filter((p) => p.text);
+}
+
+class IntroTourModal extends Modal {
+  constructor(app, onClose = () => {}) {
+    super(app);
+    this.page = 0;
+    this.onCloseCb = onClose;
+  }
+  onOpen() {
+    this.modalEl.addClass("budget-tour-modal");
+    this.draw();
+  }
+  draw() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const p = TOUR_PAGES[this.page];
+    const last = this.page === TOUR_PAGES.length - 1;
+    contentEl.createDiv({ cls: "budget-muted budget-tour-step", text: `${this.page + 1} of ${TOUR_PAGES.length}` });
+    contentEl.createEl("h2", { text: p.title });
+    const body = contentEl.createEl("p", { cls: "budget-tour-body" });
+    tourSegments(p.body).forEach((seg) => (seg.bold ? body.createEl("strong", { text: seg.text }) : body.createSpan({ text: seg.text })));
+    const row = contentEl.createDiv({ cls: "budget-tour-btns" });
+    if (!last) {
+      const skip = row.createEl("button", { text: "Skip tour", cls: "budget-btn" });
+      skip.onclick = () => this.close();
+    }
+    if (this.page > 0) {
+      const back = row.createEl("button", { text: "Back", cls: "budget-btn" });
+      back.onclick = () => {
+        this.page--;
+        this.draw();
+      };
+    }
+    const next = row.createEl("button", { text: last ? "Done" : "Next", cls: "budget-btn mod-cta" });
+    next.onclick = () => {
+      if (last) return this.close();
+      this.page++;
+      this.draw();
+    };
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.onCloseCb();
+  }
+}
+
 class PaycheckModal extends Modal {
   constructor(app, onSubmit, prefill = {}) {
     super(app);
@@ -12758,7 +12820,7 @@ class BudgetDashboardView extends ItemView {
     return VIEW_TYPE;
   }
   getDisplayText() {
-    return "Budget Dashboard";
+    return "Budget Tracker";
   }
   getIcon() {
     return "wallet";
@@ -12872,7 +12934,7 @@ class BudgetDashboardView extends ItemView {
     container.addClass("budget-dashboard");
     if (isMobileApp()) container.addClass("budget-mobile");
 
-    container.createEl("h2", { text: "Budget Dashboard", cls: "budget-title" });
+    container.createEl("h2", { text: "Budget Tracker", cls: "budget-title" });
 
     // ---- Action bar: everything reachable without the command palette ----
     const actions = container.createDiv({ cls: "budget-action-bar" });
@@ -17455,6 +17517,16 @@ class BudgetSettingTab extends PluginSettingTab {
 }
 
 module.exports = class BudgetTrackerPlugin extends Plugin {
+  // Opens the tour; closing it either way means it won't open by itself again.
+  showTour() {
+    new IntroTourModal(this.app, async () => {
+      if (this.settings && !this.settings.tourSeen) {
+        this.settings.tourSeen = true;
+        await writeJSON(this.app, FILES.settings, this.settings);
+      }
+    }).open();
+  }
+
   async onload() {
     await ensureDataDir(this.app);
     await ensureIds(this.app, FILES.fixedExpenses, "fixed");
@@ -17542,6 +17614,10 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
 
     if (settingsMigrated) await writeJSON(this.app, FILES.settings, this.settings);
 
+    // Only a brand-new install gets the tour on its own: anyone with a saved
+    // settings file already knows their way around. Everyone can reopen it.
+    const showTourFirst = !savedSettings.tourSeen && Object.keys(savedSettings).length === 0;
+
     this.registerView(VIEW_TYPE, (leaf) => new BudgetDashboardView(leaf, this));
 
     this.addSettingTab(new BudgetSettingTab(this.app, this));
@@ -17571,7 +17647,11 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       );
     }
 
-    this.addRibbonIcon("wallet", "Open Budget Dashboard", () => this.activateView());
+    this.addRibbonIcon("wallet", "Open Budget Tracker", () => this.activateView());
+    if (showTourFirst) {
+      const ws = this.app.workspace;
+      if (ws && typeof ws.onLayoutReady === "function") ws.onLayoutReady(() => this.showTour());
+    }
 
     this.addCommand({
       id: "open-budget-dashboard",
@@ -17580,6 +17660,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     });
 
     this.addCommand({ id: "set-up-files", name: "Set up data files and folders", callback: () => this.setupFiles() });
+    this.addCommand({ id: "show-tour", name: "Show tour", callback: () => this.showTour() });
     this.addCommand({ id: "enter-paycheck", name: "Enter paycheck", callback: () => this.promptEnterPaycheck() });
     this.addCommand({ id: "add-account", name: "Add account", callback: () => this.promptAddAccount() });
     this.addCommand({ id: "add-revolving-debt", name: "Add credit card terms", callback: () => this.promptAddCreditCardTerms() });
@@ -17609,12 +17690,12 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     });
     this.addCommand({
       id: "open-budget-dashboard-sidebar",
-      name: "Open Budget Dashboard in sidebar",
+      name: "Open in sidebar",
       callback: () => this.activateView("sidebar")
     });
     this.addCommand({
       id: "create-budget-dashboard-note",
-      name: "Create Budget Dashboard note (bookmarkable)",
+      name: "Create bookmarkable note",
       callback: () => this.createDashboardNote()
     });
   }
@@ -19771,7 +19852,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     el.empty();
     el.addClass("budget-launcher");
 
-    const btn = el.createEl("button", { text: "Open Budget Dashboard", cls: "budget-launcher-btn mod-cta" });
+    const btn = el.createEl("button", { text: "Open Budget Tracker", cls: "budget-launcher-btn mod-cta" });
     btn.onclick = () => this.activateView();
 
     const summary = el.createDiv({ cls: "budget-launcher-summary" });
@@ -19812,9 +19893,11 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
   // Creates (or opens) a note containing the launcher block, so there's
   // something concrete to bookmark on mobile.
   async createDashboardNote() {
-    const path = "Budget/Budget Dashboard.md";
+    // Notes made before the rename keep their old name, so they're reused, not duplicated.
+    const legacyPath = "Budget/Budget Dashboard.md";
+    const path = this.app.vault.getAbstractFileByPath(legacyPath) ? legacyPath : "Budget/Budget Tracker.md";
     const body = [
-      "# Budget Dashboard",
+      "# Budget Tracker",
       "",
       "```budget",
       "```",
@@ -19828,7 +19911,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     if (!file) {
       if (!(await this.app.vault.adapter.exists(DATA_DIR))) await ensureDataDir(this.app);
       file = await this.app.vault.create(path, body);
-      new Notice("Created \u201cBudget/Budget Dashboard\u201d \u2014 bookmark it for quick access.", 9000);
+      new Notice("Created \u201cBudget/Budget Tracker\u201d \u2014 bookmark it for quick access.", 9000);
     }
     const leaf = this.app.workspace.getLeaf(isMobileApp() ? false : "tab");
     await leaf.openFile(file);
@@ -20058,7 +20141,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
 
     if (!leaf) leaf = this.app.workspace.getLeaf(true);
     if (!leaf) {
-      new Notice("Couldn't open the Budget Dashboard \u2014 no available pane.");
+      new Notice("Couldn't open Budget Tracker \u2014 no available pane.");
       return null;
     }
 

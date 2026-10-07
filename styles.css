@@ -3560,3 +3560,9 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 .budget-debt-chart-toggle {
   margin: 0.4em 0 0.6em;
 }
+
+/* First-run tour: a small dialog, buttons on the right. */
+.budget-tour-modal { max-width: 28em; }
+.budget-tour-step { font-size: var(--font-ui-smaller); }
+.budget-tour-body { line-height: 1.5; }
+.budget-tour-btns { display: flex; justify-content: flex-end; gap: 0.5em; flex-wrap: wrap; margin-top: 1.2em; }

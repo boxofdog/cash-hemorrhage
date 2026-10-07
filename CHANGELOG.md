@@ -3,12 +3,20 @@
 ## 1.27.5 (unreleased)
 
 ### Added
+- **A short tour for new installs.** Eight pages on how the budget thinks and
+  how to get set up, with Back, Next and Skip tour. It opens by itself on a
+  brand-new install; everyone else can open it any time from the command
+  palette: **Budget Tracker: Show tour**.
 - **Two views of the debt progress chart.** **Progress** shows just the balances
   you've actually had, scaled to fit, so a few weeks of paydown no longer
   looks flat. **Payoff** keeps the dotted line out to debt-free. Pick either
   above the chart.
 
 ### Changed
+- **"Budget Dashboard" is now "Budget Tracker"** everywhere: the tab title, the
+  header, the ribbon icon, the commands and the bookmarkable note. The commands
+  are now **Open in sidebar** and **Create bookmarkable note**. A note you made
+  earlier keeps working.
 - **Tidier goal rows.** The line under the bar is now one: what's left, the
   pace, and the account it follows. Longer notes moved into a hover tip, and
   the contributions summary is just the count.

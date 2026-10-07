@@ -56,7 +56,7 @@ const OPTIONAL_EXPORTS = [
   "isCappedFund", "regularGoals", "cappedFunds", "fundPlacement", "fundProgress", "fundShare", "fundReason",
   "allocateToFunds", "fundTransferCategory", "pairFundTransfers", "applyFundTransferPairs", "accountLabel",
   "FUND_PLACEMENTS", "FUND_PLACEMENT_LABELS", "FUND_MIN_SUGGESTION", "FUND_TRANSFER_WINDOW_DAYS", "FUND_STALE_DAYS",
-  "CappedFundModal", "setCategoryTransfer", "genId", "formatChartDate",
+  "CappedFundModal", "TOUR_PAGES", "tourSegments", "IntroTourModal", "setCategoryTransfer", "genId", "formatChartDate",
   "fundMovesThisPeriod", "withoutFundAccountRows", "fundBalanceFresh", "fundBalanceAge", "TRANSFER_WORDS", "P2P_WORDS",
   "FUND_ASK_MAX_AGE_DAYS", "dedupeTransactionIds", "livePairPartner", "fundAccountIds", "PAY_WORDS",
   // 1.19.0 — universal portfolio import
