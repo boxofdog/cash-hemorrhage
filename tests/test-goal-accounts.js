@@ -299,8 +299,9 @@ console.log("\n8. The Savings tab");
 
   let r = await render(goals, txs);
   const rows = byCls(r.root, "budget-goal-row");
-  check("a linked goal says what it follows", text(byCls(rows[0], "budget-goal-link")[0]), `Follows Cal Coast — Personal Savings · transfers since ${H.formatChartDate("2026-01-01")}`);
-  check("an unlinked one doesn't", byCls(rows[2], "budget-goal-link").length, 0);
+  check("a linked goal says what it follows, in the same line as its pace", text(byCls(rows[0], "budget-goal-meta")[0]).includes(`follows Cal Coast — Personal Savings since ${H.formatShortDate("2026-01-01")}`), true);
+  check("an unlinked one doesn't", text(byCls(rows[2], "budget-goal-meta")[0]).includes("follows"), false);
+  check("no separate follows line", byCls(rows[0], "budget-goal-link").length, 0);
   const contrib = byCls(rows[1], "budget-contrib-row")[0];
   check("a transfer from the account is labelled so, with Unassign and no Remove",
     [text(byCls(contrib, "budget-badge")[0]), buttonsIn(contrib).map((b) => b._text)], ["transfer to savings", ["Unassign"]]);

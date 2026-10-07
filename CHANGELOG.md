@@ -2,6 +2,22 @@
 
 ## 1.27.5 (unreleased)
 
+### Added
+- **Two views of the debt progress chart.** **Progress** shows just the balances
+  you've actually had, scaled to fit, so a few weeks of paydown no longer
+  looks flat. **Payoff** keeps the dotted line out to debt-free. Pick either
+  above the chart.
+
+### Changed
+- **Tidier goal rows.** The line under the bar is now one: what's left, the
+  pace, and the account it follows. Longer notes moved into a hover tip, and
+  the contributions summary is just the count.
+- **Tidier debt rows.** Each debt's notes are down to one or two lines, and
+  dates are shorter ("Oct 6").
+- **One Edit button on each debt.** Next to **Apply payment**, **Edit** opens a
+  menu with everything else: Edit loan or plan, Set balance, Close loan or
+  Delete.
+
 ### Fixed
 - **Insights opens on the new month from the 1st.** It used to stay on last
   month until the first transaction of the new one arrived, because it only

@@ -5598,16 +5598,27 @@ function buildDebtChart(history, projection, opts = {}) {
   const allY = pts.concat(projPts).map((p) => p.y);
   const minX = Math.min(...allX);
   const maxX = Math.max(...allX);
-  const maxY = Math.max(...allY, 1);
+  const dataMax = Math.max(...allY, 1);
+  // Zoomed, the axis fits the line (with a little air) instead of running down
+  // to $0, which is what makes a few weeks of paydown visible. Not the default:
+  // a chart that doesn't start at zero should be asked for.
+  let minY = 0;
+  let maxY = dataMax;
+  if (opts.zoom) {
+    const lo = Math.min(...allY);
+    const pad = (dataMax - lo) * 0.12 || dataMax * 0.1 || 1;
+    minY = Math.max(0, lo - pad);
+    maxY = dataMax + pad;
+  }
 
   const spanX = maxX - minX || 1;
   const sx = (x) => PAD.left + ((x - minX) / spanX) * plotW;
-  const sy = (y) => PAD.top + plotH - (y / maxY) * plotH;
+  const sy = (y) => PAD.top + plotH - ((y - minY) / (maxY - minY || 1)) * plotH;
 
   const line = (arr) => arr.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(" ");
 
   // y gridlines at 0 / 50% / 100%
-  const yTicks = [0, maxY / 2, maxY];
+  const yTicks = [minY, (minY + maxY) / 2, maxY];
   const grid = yTicks
     .map(
       (v) =>
@@ -5714,6 +5725,14 @@ function formatChartDate(iso) {
   if (!m) return String(iso || "");
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
+}
+
+// "Oct 6" this year, "Oct 6, 2027" any other, for lines of small text where the
+// year is noise.
+function formatShortDate(iso) {
+  const full = formatChartDate(iso);
+  const year = todayLocal().slice(0, 4);
+  return full.endsWith(`, ${year}`) ? full.slice(0, -(year.length + 2)) : full;
 }
 
 // The point closest to x, ties to the earlier one.
@@ -14189,36 +14208,41 @@ class BudgetDashboardView extends ItemView {
       const fill = track.createDiv({ cls: `budget-progress-fill${p.complete ? " budget-progress-done" : ""}` });
       fill.style.width = `${p.pct.toFixed(1)}%`;
 
+      // One quiet line under the bar: what's left, the pace it asks, and which
+      // account it follows. Notes that only matter sometimes live in the
+      // tooltip instead of taking a line of their own.
       const meta = row.createDiv({ cls: "budget-goal-meta" });
       const pace = goalPace(g, todayLocal(), periodDays, resolvePaySchedule(this.plugin.settings, allTx));
+      const bits = [];
+      let note = "";
+      const due = g.target_date ? formatShortDate(g.target_date) : "";
       if (p.complete) {
-        meta.createSpan({ text: "Goal reached." });
+        bits.push("Goal reached.");
       } else if (pace && g.target_date) {
-        let paceText;
+        bits.push(`$${p.remaining.toFixed(2)} to go`);
         if (pace.days <= 0) {
-          paceText = `$${p.remaining.toFixed(2)} to go \u00b7 target date ${g.target_date} has passed`;
+          bits.push(`target date ${due} has passed`);
         } else if (pace.paychecks === 0) {
-          paceText = `$${p.remaining.toFixed(2)} to go \u00b7 no paycheck lands before ${g.target_date}, so it all has to come from this one`;
+          bits.push(`no paycheck before ${due}, so it all comes from this one`);
         } else if (pace.exact) {
-          paceText =
-            `$${p.remaining.toFixed(2)} to go \u00b7 ${pace.paychecks} paycheck${pace.paychecks === 1 ? "" : "s"} before ${g.target_date} \u00b7 $${pace.perPeriod.toFixed(2)} each` +
-            (pace.inferred ? " (cadence inferred from your paycheck history)" : "");
+          bits.push(`${pace.paychecks} paycheck${pace.paychecks === 1 ? "" : "s"} of $${pace.perPeriod.toFixed(2)}`, `by ${due}`);
+          if (pace.inferred) note = "Pay schedule inferred from your paycheck history.";
         } else {
-          paceText = `$${p.remaining.toFixed(2)} to go \u00b7 by ${g.target_date} (${pace.days} days) \u00b7 roughly $${pace.perPeriod.toFixed(2)} per paycheck (set a pay schedule for an exact count)`;
+          bits.push(`about $${pace.perPeriod.toFixed(2)} a paycheck`, `by ${due} (${pace.days} days)`);
+          note = "Set a pay schedule in Settings for an exact count.";
         }
-        meta.createSpan({ text: paceText });
       } else {
-        meta.createSpan({ text: `$${p.remaining.toFixed(2)} to go` });
+        bits.push(`$${p.remaining.toFixed(2)} to go`);
       }
       const goalAccount = g.account_id ? (ctx.accounts || []).find((a) => a && a.id === g.account_id) : null;
       if (g.account_id) {
-        row.createDiv({ cls: "budget-goal-meta budget-goal-link" }).createSpan({
-          text:
-            `Follows ${goalAccount ? accountLabel(goalAccount) : `${g.account_id} (no longer in your accounts)`}` +
-            (g.track_from ? ` \u00b7 transfers since ${formatChartDate(g.track_from)}` : ""),
-          cls: "budget-muted"
-        });
+        bits.push(
+          `follows ${goalAccount ? accountLabel(goalAccount) : `${g.account_id} (no longer in your accounts)`}` +
+            (g.track_from ? ` since ${formatShortDate(g.track_from)}` : "")
+        );
       }
+      const metaSpan = meta.createSpan({ text: bits.join(" \u00b7 ") });
+      if (note) metaSpan.setAttr("title", note);
 
       const btns = row.createDiv({ cls: "budget-goal-btns" });
 
@@ -14312,9 +14336,7 @@ class BudgetDashboardView extends ItemView {
           row,
           `goal-contribs-${g.id}`,
           "Contributions",
-          heldBack > 0
-            ? `${contribs.length} \u00b7 $${heldBack.toFixed(2)} held back from free cash`
-            : `${contribs.length} \u00b7 all matched to transactions`,
+          heldBack > 0 ? `${contribs.length} \u00b7 $${heldBack.toFixed(2)} held back from free cash` : String(contribs.length),
           false
         );
 
@@ -14871,24 +14893,25 @@ class BudgetDashboardView extends ItemView {
         });
       }
     }
+    // What it's worth and where the balance comes from share one quiet line.
     const equity = loanEquity(loan, today);
-    if (equity != null) {
-      textCol.createDiv({
-        text: `Worth ~$${Number(loan.estimated_value).toFixed(2)} \u00b7 ${equity >= 0 ? `$${equity.toFixed(2)} equity` : `$${Math.abs(equity).toFixed(2)} underwater`}`,
-        cls: `budget-debt-meta${equity < 0 ? " budget-debt-stale" : ""}`
-      });
-    }
+    const worth =
+      equity != null
+        ? `Worth ~$${Number(loan.estimated_value).toFixed(2)} \u00b7 ${equity >= 0 ? `$${equity.toFixed(2)} equity` : `$${Math.abs(equity).toFixed(2)} underwater`}`
+        : "";
     const a = loan.balance_anchor || {};
+    const since = st.paymentsCounted ? `, less ${st.paymentsCounted} payment${st.paymentsCounted === 1 ? "" : "s"} since` : "";
+    const source =
+      a.source === "simplefin"
+        ? `Balance from SimpleFIN on ${formatShortDate(a.date)}${since}`
+        : loan.simplefin_id
+          ? "Linked to SimpleFIN \u2014 the lender's balance comes in at the next sync"
+          : st.paymentsCounted
+            ? `Balance from $${(Number(a.amount) || 0).toFixed(2)} on ${formatShortDate(a.date || loan.loan_date || today)}${since}`
+            : `Balance as entered ${formatShortDate(a.date || loan.loan_date || today)}`;
     textCol.createDiv({
-      text:
-        a.source === "simplefin"
-          ? `Balance from SimpleFIN \u00b7 ${formatChartDate(a.date)}${st.paymentsCounted ? `, less ${st.paymentsCounted} payment${st.paymentsCounted === 1 ? "" : "s"} since` : ""}`
-          : loan.simplefin_id
-            ? "Linked to SimpleFIN \u2014 the lender's balance comes in at the next sync"
-            : st.paymentsCounted
-              ? `Balance worked out from $${(Number(a.amount) || 0).toFixed(2)} on ${formatChartDate(a.date || loan.loan_date || today)}, less ${st.paymentsCounted} payment${st.paymentsCounted === 1 ? "" : "s"} since`
-              : `Balance as entered ${formatChartDate(a.date || loan.loan_date || today)}`,
-      cls: "budget-debt-meta budget-debt-seam"
+      text: [worth, source].filter(Boolean).join(" \u00b7 "),
+      cls: `budget-debt-meta budget-debt-seam${equity != null && equity < 0 ? " budget-debt-stale" : ""}`
     });
   }
 
@@ -14951,7 +14974,7 @@ class BudgetDashboardView extends ItemView {
         if (kind === "bnpl") {
           const left = remainingInstallments(debt);
           bits.push(`${left} \u00d7 $${(debt.installment_amount || 0).toFixed(2)} left`);
-          if (debt.next_due_date) bits.push(`next ${debt.next_due_date}`);
+          if (debt.next_due_date) bits.push(`next ${formatShortDate(debt.next_due_date)}`);
         }
         const applied = (debt.applied_payments || []).length;
         if (applied && kind !== "loan") bits.push(`${applied} payment${applied === 1 ? "" : "s"} applied`);
@@ -14959,7 +14982,11 @@ class BudgetDashboardView extends ItemView {
         if (loanDetail) this.renderLoanDetail(textCol, nameLine, debt);
 
         if (cardState) {
-          const parts = [`anchored $${cardState.anchor.toFixed(2)}${cardState.since ? ` on ${cardState.since}` : ""}`];
+          // One quiet line: where the balance started, what has posted since,
+          // and how recent the import is. The anchor and the ledger can be days
+          // apart, and saying so beats a figure that silently stops at the last
+          // import.
+          const parts = [`from $${cardState.anchor.toFixed(2)}${cardState.since ? ` on ${formatShortDate(cardState.since)}` : ""}`];
           if (cardState.derived) {
             if (cardState.chargeCount) {
               parts.push(`+$${cardState.charges.toFixed(2)} in ${cardState.chargeCount} charge${cardState.chargeCount === 1 ? "" : "s"}`);
@@ -14968,24 +14995,23 @@ class BudgetDashboardView extends ItemView {
               parts.push(`\u2212$${cardState.payments.toFixed(2)} in ${cardState.paymentCount} payment${cardState.paymentCount === 1 ? "" : "s"}`);
             }
           } else {
-            parts.push("no card activity imported since");
+            parts.push("nothing posted since");
           }
-          textCol.createDiv({ text: parts.join(" \u00b7 "), cls: "budget-debt-meta budget-debt-seam" });
-
-          // The anchor and the ledger can be days apart. Saying so beats
-          // presenting a figure that silently stops at the last import.
           const acct = accounts.find((a) => a.id === debt.account_id);
           const through = acct && acct.last_imported_through;
+          let behind = 0;
           if (through) {
-            const behind = daysBetween(through, todayLocal());
-            textCol.createDiv({
-              text:
-                behind > 0
-                  ? `Card imported through ${through} \u2014 ${behind} day${behind === 1 ? "" : "s"} of activity may not be counted yet.`
-                  : `Card imported through ${through}.`,
-              cls: `budget-debt-meta${behind > 3 ? " budget-debt-stale" : ""}`
-            });
+            behind = daysBetween(through, todayLocal());
+            parts.push(
+              behind > 0
+                ? `imported through ${formatShortDate(through)} (${behind} day${behind === 1 ? "" : "s"} behind)`
+                : `imported through ${formatShortDate(through)}`
+            );
           }
+          textCol.createDiv({
+            text: parts.join(" \u00b7 "),
+            cls: `budget-debt-meta budget-debt-seam${behind > 3 ? " budget-debt-stale" : ""}`
+          });
         }
 
         const amtCol = row.createDiv({ cls: "budget-debt-amt-col" });
@@ -14995,7 +15021,7 @@ class BudgetDashboardView extends ItemView {
         const btnCol = row.createDiv({ cls: "budget-debt-btn-col" });
 
         const applyBtn = btnCol.createEl("button", {
-          text: pending.length ? `Apply Payment (${pending.length})` : "Apply Payment",
+          text: pending.length ? `Apply payment (${pending.length})` : "Apply payment",
           cls: pending.length ? "budget-btn mod-cta" : "budget-btn"
         });
         applyBtn.onclick = () => {
@@ -15031,21 +15057,9 @@ class BudgetDashboardView extends ItemView {
           }, allTx).open();
         };
 
-        if (kind === "loan") {
-          btnCol.createEl("button", { text: "Edit", cls: "budget-btn" }).onclick = () => this.plugin.promptLoan(debt);
-          const close = btnCol.createEl("button", { text: "Close", cls: "budget-btn" });
-          close.setAttr("title", "Sold, traded in, refinanced or paid off");
-          close.onclick = () => this.plugin.promptCloseLoan(debt);
-          return;
-        }
-
-        if (kind === "bnpl") {
-          const editPlanBtn = btnCol.createEl("button", { text: "Edit Plan", cls: "budget-btn" });
-          editPlanBtn.onclick = () => this.plugin.promptEditBNPL(debt);
-        }
-
-        const delDebt = btnCol.createEl("button", { text: "Delete", cls: "budget-btn budget-btn-danger" });
-        delDebt.onclick = () => {
+        // Everything that changes the debt itself sits behind one Edit menu, so
+        // a row shows its balance and the one thing you do most: apply a payment.
+        const deleteDebt = () => {
           new ConfirmModal(this.app, {
             title: `Delete “${debtLabel(debt)}”?`,
             body: [
@@ -15063,11 +15077,7 @@ class BudgetDashboardView extends ItemView {
           }).open();
         };
 
-        const editBtn = btnCol.createEl("button", {
-          text: kind === "bnpl" ? "Set Balance" : "Edit Balance",
-          cls: "budget-btn"
-        });
-        editBtn.onclick = () => {
+        const editBalance = () => {
           new EditBalanceModal(this.app, debt, async (newBalance) => {
             const file = kind === "cc" ? FILES.revolvingDebts : FILES.installmentDebts;
             const list = await readJSON(this.app, file, []);
@@ -15091,6 +15101,39 @@ class BudgetDashboardView extends ItemView {
             await this.plugin.snapshotDebt();
             await this.plugin.refreshAfterDataChange();
           }, allTx).open();
+        };
+
+        const entries =
+          kind === "loan"
+            ? [
+                { title: "Edit loan", run: () => this.plugin.promptLoan(debt) },
+                { title: "Close loan\u2026", run: () => this.plugin.promptCloseLoan(debt), hint: "Sold, traded in, refinanced or paid off" }
+              ]
+            : [
+                ...(kind === "bnpl" ? [{ title: "Edit plan", run: () => this.plugin.promptEditBNPL(debt) }] : []),
+                { title: kind === "bnpl" ? "Set balance" : "Edit balance", run: editBalance },
+                { separator: true },
+                { title: "Delete\u2026", run: deleteDebt, warn: true }
+              ];
+        const editMenuBtn = btnCol.createEl("button", { text: "Edit", cls: "budget-btn budget-btn-menu" });
+        editMenuBtn.setAttr("aria-haspopup", "menu");
+        editMenuBtn.setAttr("title", entries.filter((e) => e.title).map((e) => e.title.replace("\u2026", "")).join(" · "));
+        editMenuBtn.onclick = (evt) => {
+          const menu = new Menu();
+          entries.forEach((e) => {
+            if (e.separator) {
+              menu.addSeparator();
+              return;
+            }
+            menu.addItem((item) => {
+              item.setTitle(e.title);
+              if (e.warn && typeof item.setWarning === "function") item.setWarning(true);
+              item.onClick(e.run);
+            });
+          });
+          const rect = typeof editMenuBtn.getBoundingClientRect === "function" ? editMenuBtn.getBoundingClientRect() : null;
+          if (rect) menu.showAtPosition({ x: rect.left, y: rect.bottom });
+          else menu.showAtMouseEvent(evt);
         };
       };
 
@@ -15128,7 +15171,23 @@ class BudgetDashboardView extends ItemView {
       progressCard.createEl("h4", { text: "Total debt progress" });
 
       const projection = projectPayoff(grandTotal, this.lastResult);
-      const svg = buildDebtChart(history, projection);
+      // Two views of the same history. The payoff view runs the line out to
+      // debt-free, which squeezes the weeks you have actually lived into a
+      // sliver; progress shows just those, scaled to fit.
+      const view = projection && this.debtChartView === "payoff" ? "payoff" : "progress";
+      if (projection) {
+        const toggle = progressCard.createDiv({ cls: "budget-segmented budget-debt-chart-toggle" });
+        [["progress", "Progress"], ["payoff", "Payoff"]].forEach(([key, label]) => {
+          const b = toggle.createEl("button", { text: label, cls: `budget-segment${view === key ? " budget-segment-on" : ""}` });
+          b.setAttr("title", key === "progress" ? "Where your balance has gone so far" : "The line out to debt-free");
+          b.onclick = () => {
+            if (view === key) return;
+            this.debtChartView = key;
+            this.render();
+          };
+        });
+      }
+      const svg = view === "payoff" ? buildDebtChart(history, projection) : buildDebtChart(history, null, { zoom: true });
       if (svg) {
         const chartWrap = progressCard.createDiv({ cls: "budget-chart-wrap budget-debt-chart-wrap" });
         setSvgContent(chartWrap, svg);
@@ -15140,11 +15199,26 @@ class BudgetDashboardView extends ItemView {
           text: "Only one data point so far \u2014 the line fills in as balances change over time.",
           cls: "budget-muted"
         });
+      } else if (view === "progress") {
+        const first = history[0];
+        const last = history[history.length - 1];
+        const change = round2(first.total_debt - last.total_debt);
+        progressCard.createEl("p", {
+          text:
+            change > 0.005
+              ? `Down $${change.toFixed(2)} since ${formatShortDate(first.date)}, from $${first.total_debt.toFixed(2)} to $${last.total_debt.toFixed(2)}.`
+              : change < -0.005
+                ? `Up $${Math.abs(change).toFixed(2)} since ${formatShortDate(first.date)}, from $${first.total_debt.toFixed(2)} to $${last.total_debt.toFixed(2)}.`
+                : `No change since ${formatShortDate(first.date)}.`,
+          cls: "budget-muted"
+        });
       }
       if (projection) {
         const months = Math.round(projection.daysToZero / 30.4);
         progressCard.createEl("p", {
-          text: `At this period's pace ($${projection.perPeriod.toFixed(2)} per period), debt-free around ${projection.zeroDate} \u2014 roughly ${months} month${months === 1 ? "" : "s"}. Dotted line shows that projection.`,
+          text:
+            `At this period's pace ($${projection.perPeriod.toFixed(2)} per period), debt-free around ${projection.zeroDate} \u2014 roughly ${months} month${months === 1 ? "" : "s"}.` +
+            (view === "payoff" ? " Dotted line shows that projection." : ""),
           cls: "budget-muted"
         });
       } else if (grandTotal > 0) {

@@ -3236,7 +3236,6 @@ body.is-mobile .budget-portfolio-textarea { font-size: 16px; }
   flex-basis: 100%;
   margin-top: 0.1em;
 }
-.budget-goal-link { margin-top: 0.15em; }
 
 .budget-inbox-more {
   margin: 0.6em 0 0.1em;
@@ -3547,4 +3546,17 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 .budget-sync-unstable {
   color: var(--color-purple);
   margin: 0.2em 0 0.8em;
+}
+
+/* A button that opens a menu says so with a small chevron. */
+.budget-btn-menu::after {
+  content: "\25BE";
+  margin-left: 0.4em;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+/* The Progress / Payoff switch sits above the debt chart, left-aligned. */
+.budget-debt-chart-toggle {
+  margin: 0.4em 0 0.6em;
 }

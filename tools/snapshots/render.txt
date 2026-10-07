@@ -96,7 +96,7 @@
       <div .budget-progress-track>
         <div .budget-progress-fill>
       <div .budget-goal-meta>
-        <span> $2750.00 to go · 4 paychecks before 2026-11-26 · $687.50 each (cadence inferred from your paycheck history)
+        <span> $2750.00 to go · 4 paychecks of $687.50 · by Nov 26
       <div .budget-goal-btns>
         <button .budget-btn> Pin to dashboard
         <button .budget-btn.mod-cta> Add Funds

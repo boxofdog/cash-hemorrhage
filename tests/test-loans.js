@@ -290,12 +290,15 @@ console.log("\n7. The Debts tab");
   check("rate and payment; the badge has the date", meta[0], `7.49% APR · $432.13/mo`);
   check("payments left, when it's paid off, interest to go", /^\d+ payments left · paid off \w{3} \d{4} · \$[\d.]+ interest to go$/.test(meta[1]), true);
   check("what $50 more would do", /^\$50 more a month: paid off \d+ months sooner, \$[\d.]+ less interest$/.test(meta[2]), true);
-  check("equity", meta[3], "Worth ~$27000.00 · $2000.00 equity");
-  check("where the balance comes from", meta[4], `Balance as entered ${H.formatChartDate(T)}`);
+  check("equity and where the balance comes from share one line", meta[3], `Worth ~$27000.00 · $2000.00 equity · Balance as entered ${H.formatShortDate(T)}`);
   check("its amount", text(byCls(row, "budget-amount")[0]), "$25000.00");
-  check("Apply Payment, Edit, Close — no Delete or Set Balance", buttonsIn(byCls(row, "budget-debt-btn-col")[0]).map((b) => b._text), ["Apply Payment", "Edit", "Close"]);
+  check("Apply payment and one Edit menu", buttonsIn(byCls(row, "budget-debt-btn-col")[0]).map((b) => b._text), ["Apply payment", "Edit"]);
+  global.__menus = [];
   button(row, "Edit").onclick();
-  button(row, "Close").onclick();
+  const loanMenu = global.__menus[0];
+  check("a loan's menu: Edit loan, Close loan — no Delete or Set balance", loanMenu.items.map((i) => i.title), ["Edit loan", "Close loan\u2026"]);
+  loanMenu.items[0].cb();
+  loanMenu.items[1].cb();
   button(root, "Add loan").onclick();
   check("which open the loan dialogs", calls, [["loan", "loan-car"], ["close", "loan-car"], ["loan", undefined]]);
   const closedRow = byCls(root, "budget-loan-closed")[0];
@@ -303,16 +306,50 @@ console.log("\n7. The Debts tab");
   await button(closedRow, "Reopen").onclick();
   check("and a way back", calls.pop(), ["reopen", "old"]);
 
+  // Debt progress chart: Progress (zoomed, history only) and Payoff views.
+  {
+    const hist = [{ date: D(-60), total_debt: 26000 }, { date: D(-30), total_debt: 25500 }, { date: D(0), total_debt: 25000 }];
+    const zoomed = H.buildDebtChart(hist, null, { zoom: true });
+    const plain = H.buildDebtChart(hist, null);
+    check("zoomed chart differs from the default and still draws", [typeof zoomed, zoomed !== plain], ["string", true]);
+    check("zoomed axis fits the data, not zero", /\$26,?000|26000|26\.0k|\$26k/i.test(zoomed) && !/>\$?0</.test(zoomed), true);
+    const chartStore = { [F.debtHistory]: JSON.stringify(hist), [F.closedLoans]: "[]" };
+    const cv = Object.create(H.BudgetDashboardView.prototype);
+    let rerendered = 0;
+    Object.assign(cv, {
+      app: { vault: { adapter: { exists: async (p) => p in chartStore, read: async (p) => chartStore[p] } } },
+      sectionOpen: {}, scrollMemory: {}, plugin: { settings: {} },
+      lastResult: { recommendedExtraPayoff: 100, requiredMinimums: 100, todayStr: T, nextPaydayStr: D(14) },
+      render() { rerendered++; }
+    });
+    const ctx = { allTx: [], revolvingDebts: [], installmentDebts: [loan], allDebts: [loan], categoryMetaList: [], accounts: [], ownership: null, rules: [] };
+    const cr = el("div");
+    await cv.renderDebts(cr, ctx);
+    const seg = byCls(cr, "budget-segment").map(text);
+    check("a toggle with Progress and Payoff when a payoff date exists", seg, ["Progress", "Payoff"]);
+    check("Progress is the default view", byCls(cr, "budget-segment-on").map(text), ["Progress"]);
+    check("progress says how far it's come", /Down \$1000\.00 since .* from \$26000\.00 to \$25000\.00\./.test(text(cr)) && !text(cr).includes("Dotted line"), true);
+    button(cr, "Payoff").onclick();
+    check("Payoff remembers the choice and redraws", [cv.debtChartView, rerendered], ["payoff", 1]);
+    const cr2 = el("div");
+    await cv.renderDebts(cr2, ctx);
+    check("Payoff view explains the dotted line", [byCls(cr2, "budget-segment-on").map(text), text(cr2).includes("Dotted line shows that projection.")], [["Payoff"], true]);
+    cv.lastResult = null;
+    const cr3 = el("div");
+    await cv.renderDebts(cr3, ctx);
+    check("no payoff date: no toggle, progress only", byCls(cr3, "budget-segment").length, 0);
+  }
+
   const paying = Object.assign(clone(loan), { first_payment_date: D(-50), next_due_date: D(-20), loan_date: D(-60), balance_anchor: { amount: 25000, date: D(-60), source: "manual" }, applied_payments: [{ amount: 432.13, date: D(-50) }] });
   const root3 = el("div");
   await v.renderDebts(root3, { allTx: [], revolvingDebts: [], installmentDebts: [paying], allDebts: [paying], categoryMetaList: [], accounts: [], ownership: null, rules: [] });
   const meta3 = byCls(root3, "budget-debt-meta").map(text);
   check("a due date passed without a payment applied says so", meta3[0], `7.49% APR · $432.13/mo · ${H.formatChartDate(H.addLoanMonths(D(-50), 1))} payment not applied`);
-  check("…and the balance counts the payments since it was entered", text(byCls(root3, "budget-debt-seam")[0]), `Balance worked out from $25000.00 on ${H.formatChartDate(D(-60))}, less 1 payment since`);
+  check("…and the balance counts the payments since it was entered", text(byCls(root3, "budget-debt-seam")[0]), `Worth ~$27000.00 · $2380.83 equity · Balance from $25000.00 on ${H.formatShortDate(D(-60))}, less 1 payment since`);
   const sf = Object.assign(clone(loan), { balance_anchor: { amount: 24650.12, date: T, source: "simplefin" }, simplefin_id: "ACT-loan" });
   const root2 = el("div");
   await v.renderDebts(root2, { allTx: [], revolvingDebts: [], installmentDebts: [sf], allDebts: [sf], categoryMetaList: [], accounts: [], ownership: null, rules: [] });
-  check("a synced balance says so", byCls(root2, "budget-debt-seam").map(text), [`Balance from SimpleFIN · ${H.formatChartDate(T)}`]);
+  check("a synced balance says so", byCls(root2, "budget-debt-seam").map(text), [`Worth ~$27000.00 · $2349.88 equity · Balance from SimpleFIN on ${H.formatShortDate(T)}`]);
 }
 
 // ===========================================================================
