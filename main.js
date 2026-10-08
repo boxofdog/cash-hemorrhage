@@ -3546,9 +3546,15 @@ function mergeManualIntoBank(transactions, manualId, bankId) {
   const b = rows.find((t) => t && t.id === bankId);
   if (!m || !b || !m.manual || b.manual) return { ok: false, transactions: rows, relink: [] };
   if (!b.override_label && m.override_label) b.override_label = m.override_label;
-  if (!b.transfer_pair && m.transfer_pair) b.transfer_pair = m.transfer_pair;
+  // The bank's row keeps a pairing it already has. The typed row's partner then
+  // has nobody to pair with, so it's freed rather than left pointing at a row
+  // that doesn't point back.
+  const takesPair = !b.transfer_pair && !!m.transfer_pair;
+  if (takesPair) b.transfer_pair = m.transfer_pair;
   rows.forEach((t) => {
-    if (t && t.transfer_pair === m.id) t.transfer_pair = b.id;
+    if (!t || t.transfer_pair !== m.id) return;
+    if (takesPair) t.transfer_pair = b.id;
+    else delete t.transfer_pair;
   });
   return {
     ok: true,

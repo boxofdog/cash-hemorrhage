@@ -34,6 +34,9 @@ console.log("\n1. Which pairs are suggested");
   check("each row is offered once, nearest first", H.manualDuplicateCandidates([
     tx("m1", "2026-10-02", -9, "Coffee", { manual: true }), tx("m2", "2026-10-05", -9, "Coffee", { manual: true }),
     tx("b1", "2026-10-05", -9, "COFFEE SHOP"), tx("b2", "2026-10-02", -9, "COFFEE SHOP")]).map((x) => [x.manual.id, x.bank.id]).sort(), [["m1", "b2"], ["m2", "b1"]]);
+  const win = (days, amt = -40.25) => H.manualDuplicateCandidates([tx("m1", "2026-10-10", -40.25, "Shell", { manual: true }), tx("b1", H.addDays("2026-10-10", days), amt, "SHELL")]).length;
+  check("the window is three days either side: 3 matches, 4 doesn't", [win(3), win(-3), win(4), win(-4)], [1, 1, 0, 0]);
+  check("amounts are compared in cents, so float dust doesn't matter", H.manualDuplicateCandidates([tx("m1", "2026-10-10", 0.1 + 0.2, "A", { manual: true }), tx("b1", "2026-10-10", 0.3, "A")]).length, 1);
   check("Not the same keeps them from coming back", H.manualDuplicateCandidates(ledger.map((t) => (t.id === "m1" ? Object.assign({}, t, { not_duplicate_with: ["b1"] }) : t))).length, 0);
 }
 
@@ -53,6 +56,15 @@ console.log("\n2. Merging");
   check("the bank's own category isn't overwritten", H.mergeManualIntoBank([ledger[0], Object.assign({}, ledger[1], { override_label: "Gas" })], "m1", "b1").transactions[0].override_label, "Gas");
   check("it won't merge the wrong way round, or two typed rows", [H.mergeManualIntoBank(ledger, "b1", "m1").ok, H.mergeManualIntoBank([ledger[0], Object.assign({}, ledger[0], { id: "m2" })], "m1", "m2").ok], [false, false]);
   check("and leaves the original untouched", ledger.length, 3);
+  // The bank's row already has a transfer partner of its own.
+  const paired = [
+    tx("m1", "2026-10-02", -40.25, "Shell", { manual: true, transfer_pair: "x1" }),
+    tx("b1", "2026-10-03", -40.25, "SHELL", { transfer_pair: "y1" }),
+    tx("x1", "2026-10-02", 40.25, "Other", { account_id: "sav", transfer_pair: "m1" }),
+    tx("y1", "2026-10-03", 40.25, "Other", { account_id: "sav", transfer_pair: "b1" })
+  ];
+  const pr = Object.fromEntries(H.mergeManualIntoBank(paired, "m1", "b1").transactions.map((t) => [t.id, t]));
+  check("the bank's own pairing wins, and the typed row's partner is freed", [pr.b1.transfer_pair, pr.y1.transfer_pair, pr.x1.transfer_pair], ["y1", "b1", undefined]);
 }
 
 console.log("\n3. Sync no longer claims a typed row");
@@ -71,7 +83,9 @@ console.log("\n4. The plugin: merge and dismiss");
   const store = {
     [F.transactions]: JSON.stringify([tx("m1", "2026-10-02", -40.25, "Shell", { manual: true }), tx("b1", "2026-10-03", -40.25, "SHELL OIL 123")]),
     [F.installmentDebts]: JSON.stringify([{ id: "d1", applied_payments: [{ tx_id: "m1", amount: 40.25 }] }]),
-    [F.revolvingDebts]: "[]", [F.fixedExpenses]: "[]", [F.savingsGoals]: "[]"
+    [F.revolvingDebts]: JSON.stringify([{ id: "c1", applied_payments: [{ tx_id: "m1", amount: 40.25 }] }]),
+    [F.fixedExpenses]: JSON.stringify([{ id: "f1", name: "Gas bill", linked_payments: [{ tx_id: "m1", amount: 40.25 }] }]),
+    [F.savingsGoals]: JSON.stringify([{ id: "g1", name: "Trip", contributions: [{ id: "k1", amount: 40.25, linked_tx_id: "m1" }] }])
   };
   const app = { vault: { adapter: { exists: async (p) => p in store, read: async (p) => store[p], write: async (p, d) => { store[p] = d; } } } };
   const plugin = Object.create(H.__PluginClass.prototype);
@@ -84,7 +98,9 @@ console.log("\n4. The plugin: merge and dismiss");
   store[F.transactions] = before;
   check("Same purchase merges", await plugin.mergeManualDuplicate("m1", "b1"), true);
   check("one row left, the bank's", JSON.parse(store[F.transactions]).map((t) => t.id), ["b1"]);
-  check("the debt's payment link follows", JSON.parse(store[F.installmentDebts])[0].applied_payments[0].tx_id, "b1");
+  check("every kind of link follows: plans, cards, bills and goals", [
+    JSON.parse(store[F.installmentDebts])[0].applied_payments[0].tx_id, JSON.parse(store[F.revolvingDebts])[0].applied_payments[0].tx_id,
+    JSON.parse(store[F.fixedExpenses])[0].linked_payments[0].tx_id, JSON.parse(store[F.savingsGoals])[0].contributions[0].linked_tx_id], ["b1", "b1", "b1", "b1"]);
   check("a stale pair does nothing", await plugin.mergeManualDuplicate("m1", "b1"), false);
 }
 

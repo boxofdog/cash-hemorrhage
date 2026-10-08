@@ -8,7 +8,8 @@
     "snapshots": "node tools/snapshot.js",
     "snapshots:update": "node tools/snapshot.js --update",
     "check": "node --check main.js && node tools/tdz-scan.js && node tools/snapshot.js && node tests/run-tests.js",
-    "mutate:loans": "python3 tools/mutate.py tools/mutations/loans.py"
+    "mutate:loans": "python3 tools/mutate.py tools/mutations/loans.py",
+    "mutate:duplicates": "python3 tools/mutate.py tools/mutations/manual-duplicates.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",
