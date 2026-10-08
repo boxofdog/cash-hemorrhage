@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.27.6 (unreleased)
+## 1.30.0
 
 ### Added
 - **Add transactions by hand.** **Add transaction** on the Transactions tab (or
