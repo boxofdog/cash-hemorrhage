@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.30.1 (unreleased)
+## 1.30.1
 
 ### Changed
 - **"Add transaction" and "Add balance" are now "Manual Add"**: the buttons on
