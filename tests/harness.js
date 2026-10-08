@@ -75,7 +75,7 @@ const OPTIONAL_EXPORTS = [
   "buildPortfolioChart", "buildDebtChart", "enableChartHover", "buildTrendChart", "trendSandwichLayout", "enableTrendSandwich",
   "PIE_COLORS", "TREND_W", "TREND_H",
   // 1.23.0
-  "buildFinancialSnapshot", "snapshotMarkdown", "snapshotCSV", "generateFinancialSnapshot", "snapshotMoney", "snapshotTable", "PER_MONTH", "EXPORT_DIR", "findLatestPaycheck", "resolvePaySchedule", "calculateVariableNecessities", "completeOwnership", "buildSubscriptionAudit", "debtBalance", "remainingInstallments", "isRollingExpense", "withoutFundAccountRows", "MONTH_DAYS", "TREND_PAD", "TREND_SANDWICH", "escapeAttr", "formatChartMoney", "formatChartDate", "formatShortDate", "nearestIndexByX", "discretionaryBreakdown", "monthLabel", "toLocalISO", "formatMoneyInput",
+  "buildFinancialSnapshot", "buildTransactionNotes", "snapshotMarkdown", "snapshotCSV", "generateFinancialSnapshot", "snapshotMoney", "snapshotTable", "PER_MONTH", "EXPORT_DIR", "findLatestPaycheck", "resolvePaySchedule", "calculateVariableNecessities", "completeOwnership", "buildSubscriptionAudit", "debtBalance", "remainingInstallments", "isRollingExpense", "withoutFundAccountRows", "MONTH_DAYS", "TREND_PAD", "TREND_SANDWICH", "escapeAttr", "formatChartMoney", "formatChartDate", "formatShortDate", "nearestIndexByX", "discretionaryBreakdown", "monthLabel", "toLocalISO", "formatMoneyInput",
   // 1.24.0
   "goalTransferQueue", "assignGoalTransfer", "fileGoalTransferRow", "goalAccountChoices", "accountGoals", "pendingContributionFor", "deleteContribution", "GOAL_CONTRIBUTION_MATCH_DAYS",
   // 1.25.0

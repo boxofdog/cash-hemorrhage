@@ -2,6 +2,14 @@
 
 ## 1.27.6 (unreleased)
 
+### Added
+- **Export transactions to notes.** From the command palette, **Budget Tracker:
+  Export transactions to notes** writes your transaction history into
+  `Budget/exports/Transactions/`: one note per month with date, merchant,
+  category, account and amount, plus a **Transactions** index that links them.
+  They're searchable and linkable like any note. They're a read-only copy, so
+  editing them changes nothing in the plugin, and each export rewrites them.
+
 ### Changed
 - **The Budget folder's README now warns about imports.** A clean import deletes
   the CSV from `Budget/imports/`, so keep your own copy somewhere else.

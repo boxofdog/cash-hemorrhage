@@ -16,6 +16,7 @@ const DATA_DIR = "Budget/data";
 const IMPORT_DIR = "Budget/imports";
 // Where Export Snapshot saves its Markdown and CSV copies.
 const EXPORT_DIR = "Budget/exports";
+const TX_NOTES_DIR = `${EXPORT_DIR}/Transactions`;
 
 const FILES = {
   accounts: `${DATA_DIR}/accounts.json`,
@@ -1605,6 +1606,7 @@ This folder holds everything the Budget Tracker plugin keeps.
 - **data/**: the plugin's own files (accounts, debts, bills, goals, transactions, rules). Change them from the plugin rather than by hand.
 - **imports/**: drop bank CSV exports here, then run **Import CSV**. A clean import deletes the CSV, so keep your own copy in another folder.
 - **exports/**: **Export Snapshot** saves a Markdown summary and a CSV copy here.
+- **exports/Transactions/**: **Export transactions to notes** writes one note per month here. Read-only copies, rewritten on each export.
 
 Open the dashboard from the wallet icon in the ribbon, or the command palette: "Budget Tracker: Open in sidebar". Settings → Budget Tracker has everything else.
 `;
@@ -5262,6 +5264,100 @@ function snapshotCSV(snap) {
 }
 
 // Reads everything the snapshot needs and builds it.
+// ---------- transaction notes ----------
+
+// One markdown note per month, plus an index linking them, so the transaction
+// history can be searched, linked and queried from inside Obsidian. It is a
+// read-only copy: the plugin never reads these notes back, and every export
+// rewrites them. Pure so a test can check the notes without a vault.
+function buildTransactionNotes(transactions, accounts = []) {
+  const accountName = new Map((accounts || []).filter((a) => a && a.id).map((a) => [a.id, accountLabel(a)]));
+  const NOTE_WARNING = "Made by Budget Tracker. Changes here are overwritten the next time you export.";
+  const byMonth = new Map();
+  const undated = [];
+  (transactions || []).forEach((t) => {
+    if (!t) return;
+    if (isISODateString(t.date)) {
+      const key = t.date.slice(0, 7);
+      if (!byMonth.has(key)) byMonth.set(key, []);
+      byMonth.get(key).push(t);
+    } else {
+      undated.push(t);
+    }
+  });
+
+  const totals = (list) => {
+    let moneyIn = 0;
+    let moneyOut = 0;
+    list.forEach((t) => {
+      const a = Number(t.amount) || 0;
+      if (a > 0) moneyIn += a;
+      else moneyOut -= a;
+    });
+    return { moneyIn: round2(moneyIn), moneyOut: round2(moneyOut) };
+  };
+  const row = (t) => [
+    t.date || "no date",
+    `${t.merchant_raw || "—"}${t.pending ? " (pending)" : ""}`,
+    t.override_label || t.resolved_category || "Uncategorized",
+    t.account_id ? accountName.get(t.account_id) || t.account_id : "—",
+    snapshotMoney(t.amount)
+  ];
+  const sorted = (list) =>
+    list.slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.id || "").localeCompare(String(b.id || "")));
+  const head = ["Date", "Merchant", "Category", "Account", "Amount"];
+  const noteName = (key) => `Transactions ${key}`;
+
+  const files = [];
+  const indexRows = [];
+  [...byMonth.keys()].sort().reverse().forEach((key) => {
+    const list = sorted(byMonth.get(key));
+    const { moneyIn, moneyOut } = totals(list);
+    files.push({
+      name: noteName(key),
+      content: [
+        "---",
+        `month: ${key}`,
+        `transactions: ${list.length}`,
+        `money_in: ${moneyIn.toFixed(2)}`,
+        `money_out: ${moneyOut.toFixed(2)}`,
+        "---",
+        `# Transactions ${monthLabel(key)}`,
+        "",
+        `${list.length} transaction${list.length === 1 ? "" : "s"} · in ${snapshotMoney(moneyIn)} · out ${snapshotMoney(moneyOut)}`,
+        "",
+        snapshotTable(head, list.map(row)),
+        "",
+        `_${NOTE_WARNING}_`,
+        ""
+      ].join("\n")
+    });
+    indexRows.push([`[[${noteName(key)}|${monthLabel(key)}]]`, list.length, snapshotMoney(moneyIn), snapshotMoney(moneyOut)]);
+  });
+
+  if (undated.length) {
+    const list = undated.slice();
+    files.push({
+      name: "Transactions no date",
+      content: ["# Transactions with no date", "", "Usually bank holds that haven't posted yet.", "", snapshotTable(head, list.map(row)), "", `_${NOTE_WARNING}_`, ""].join("\n")
+    });
+    indexRows.push(["[[Transactions no date|No date]]", list.length, "—", "—"]);
+  }
+
+  files.push({
+    name: "Transactions",
+    content: [
+      "# Transactions",
+      "",
+      indexRows.length ? snapshotTable(["Month", "Transactions", "In", "Out"], indexRows) : "No transactions yet.",
+      "",
+      `_${NOTE_WARNING}_`,
+      ""
+    ].join("\n")
+  });
+  return files;
+}
+
 async function generateFinancialSnapshot(app, settings = {}) {
   const read = (f, d) => readJSON(app, f, d);
   const data = {
@@ -17672,6 +17768,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     this.addCommand({ id: "import-bank-csv", name: "Import bank CSV", callback: () => this.promptImportCSV() });
     this.addCommand({ id: "open-budget-settings", name: "Open settings and rules", callback: () => this.openSettings() });
     this.addCommand({ id: "sync-simplefin", name: "Sync transactions (SimpleFIN)", callback: () => this.syncSimpleFIN() });
+    this.addCommand({ id: "export-transaction-notes", name: "Export transactions to notes", callback: () => this.exportTransactionNotes() });
     this.addCommand({ id: "export-financial-snapshot", name: "Export financial snapshot", callback: () => this.exportSnapshot() });
     this.addCommand({
       id: "import-portfolio-statement",
@@ -18132,6 +18229,27 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     new Notice(msg, r.unreadable.length ? 15000 : 7000);
     if (n && typeof this.refreshAfterDataChange === "function") await this.refreshAfterDataChange();
     return r;
+  }
+
+  // Writes the transaction notes into Budget/exports/Transactions.
+  async exportTransactionNotes() {
+    try {
+      const transactions = await readJSON(this.app, FILES.transactions, []);
+      const accounts = await readJSON(this.app, FILES.accounts, []);
+      const files = buildTransactionNotes(transactions, accounts);
+      const adapter = this.app.vault.adapter;
+      for (const dir of [EXPORT_DIR.split("/")[0], EXPORT_DIR, TX_NOTES_DIR]) {
+        if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
+      }
+      for (const f of files) await adapter.write(`${TX_NOTES_DIR}/${f.name}.md`, f.content);
+      const months = files.filter((f) => /^Transactions \d{4}-\d{2}$/.test(f.name)).length;
+      new Notice(`Exported ${transactions.length} transaction${transactions.length === 1 ? "" : "s"} to ${TX_NOTES_DIR} (${months} month${months === 1 ? "" : "s"}).`, 6000);
+      return { files, months };
+    } catch (e) {
+      console.error("Budget Tracker: transaction export failed", e);
+      new Notice("Couldn't export the transactions \u2014 see the console for details.");
+      return null;
+    }
   }
 
   async exportSnapshot() {

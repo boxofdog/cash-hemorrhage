@@ -52,7 +52,11 @@ savings focus**.
   accounts are suggested and you confirm them.
 - **Portfolio.** Import investment statements to track balances over time.
 - **Charts and export.** Spending and debt charts, plus a financial snapshot
-  export (CSV and Markdown).
+  export (CSV and Markdown). **Export transactions to notes** writes your
+  transaction history into `Budget/exports/Transactions/` as one Markdown note
+  per month, plus an index, so you can search and link it in Obsidian. The notes
+  are a read-only copy: editing them changes nothing in the plugin, and the next
+  export rewrites them.
 
 Works on desktop and mobile.
 
