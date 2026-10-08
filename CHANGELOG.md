@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.30.1 (unreleased)
+
+### Changed
+- **"Add transaction" is now "Manual Add"**: the button on the Transactions tab,
+  the dialog and the command.
+
 ## 1.30.0
 
 ### Added

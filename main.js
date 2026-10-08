@@ -5488,7 +5488,7 @@ function buildFullExportNotes(data, opts) {
   return EXPORT_KINDS.flatMap((k) => buildDataNotes(k.key, data, opts));
 }
 
-// A new transaction from the Add transaction form, or why it can't be saved.
+// A new transaction from the Manual Add form, or why it can't be saved.
 // `amount` is typed positive and `direction` says which way the money went, so
 // nobody has to remember the sign. A category you pick is your own choice and
 // beats the rules; left on automatic, the rules decide as they do for imports.
@@ -9537,7 +9537,7 @@ class ManualTransactionModal extends Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "Add transaction" });
+    contentEl.createEl("h2", { text: "Manual Add" });
     const form = { date: todayLocal(), merchant: "", amount: "", direction: "out", account_id: this.accounts[0].id, category: "" };
     new Setting(contentEl).setName("Date").addText((t) => bindDateInput(t, form.date).onChange((v) => (form.date = v.trim())));
     new Setting(contentEl).setName("What it was for").addText((t) => t.setPlaceholder("Merchant or note").onChange((v) => (form.merchant = v)));
@@ -15855,7 +15855,7 @@ class BudgetDashboardView extends ItemView {
       `${recent.length} shown`,
       true
     );
-    const addTx = recentCard.createDiv({ cls: "budget-goal-btns budget-add-tx" }).createEl("button", { text: "Add transaction", cls: "budget-btn" });
+    const addTx = recentCard.createDiv({ cls: "budget-goal-btns budget-add-tx" }).createEl("button", { text: "Manual Add", cls: "budget-btn" });
     addTx.onclick = () => this.plugin.promptAddTransaction();
     if (recent.length === 0 && !hiddenHere) {
       recentCard.createEl("p", { text: "Nothing yet.", cls: "budget-muted" });
@@ -18063,7 +18063,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     this.addCommand({ id: "open-budget-settings", name: "Open settings and rules", callback: () => this.openSettings() });
     this.addCommand({ id: "sync-simplefin", name: "Sync transactions (SimpleFIN)", callback: () => this.syncSimpleFIN() });
     this.addCommand({ id: "export-data", name: "Export\u2026", callback: () => this.promptExport() });
-    this.addCommand({ id: "add-transaction", name: "Add transaction", callback: () => this.promptAddTransaction() });
+    this.addCommand({ id: "add-transaction", name: "Manual Add", callback: () => this.promptAddTransaction() });
     this.addCommand({ id: "add-investment-balance", name: "Add investment balance", callback: () => this.promptAddInvestmentBalance() });
     this.addCommand({ id: "export-transaction-notes", name: "Export transactions to notes", callback: () => this.exportTransactionNotes() });
     this.addCommand({ id: "export-financial-snapshot", name: "Export financial snapshot", callback: () => this.exportSnapshot() });
