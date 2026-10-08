@@ -3497,6 +3497,66 @@ function transferCandidates(transactions, accounts = null) {
   return out.sort((a, b) => (latest(a) < latest(b) ? 1 : latest(a) > latest(b) ? -1 : 0));
 }
 
+// ---------- a row you typed in, and the bank's row for the same purchase ----------
+
+const DUPLICATE_REVIEW_DAYS = 3;
+
+// Pairs worth asking about: a transaction you added by hand and one that came
+// from the bank with the same account and the same amount to the cent, within a
+// few days. The bank's row is never a typed one. It's only ever a question:
+// two purchases can match, so nothing merges until you say they're the same.
+// Each row is offered once, nearest dates first, then a shared word in the
+// descriptions.
+function manualDuplicateCandidates(transactions) {
+  const txs = (transactions || []).filter((t) => t && t.id);
+  const cents = (t) => Math.round(Number(t.amount) * 100);
+  const manual = txs.filter((t) => t.manual && t.date && Number.isFinite(t.amount));
+  const bank = txs.filter((t) => !t.manual && t.date && !t.pending && Number.isFinite(t.amount));
+  const found = [];
+  manual.forEach((m) => {
+    const words = merchantWords(m.merchant_raw);
+    bank.forEach((b) => {
+      if (b.account_id !== m.account_id || cents(b) !== cents(m)) return;
+      if ((m.not_duplicate_with || []).includes(b.id) || (b.not_duplicate_with || []).includes(m.id)) return;
+      const gap = Math.abs(daysBetween(m.date, b.date));
+      if (!(gap <= DUPLICATE_REVIEW_DAYS)) return;
+      const shared = [...merchantWords(b.merchant_raw)].some((w) => words.has(w));
+      found.push({ manual: m, bank: b, gap, shared });
+    });
+  });
+  found.sort((a, b) => (b.shared ? 1 : 0) - (a.shared ? 1 : 0) || a.gap - b.gap || (a.manual.id < b.manual.id ? -1 : 1) || (a.bank.id < b.bank.id ? -1 : 1));
+  const used = new Set();
+  const out = [];
+  found.forEach((c) => {
+    if (used.has(c.manual.id) || used.has(c.bank.id)) return;
+    used.add(c.manual.id);
+    used.add(c.bank.id);
+    out.push(c);
+  });
+  return out.sort((a, b) => (a.bank.date < b.bank.date ? 1 : a.bank.date > b.bank.date ? -1 : 0));
+}
+
+// Folds the typed row into the bank's. The bank's row stays, since it's the one
+// the next sync or import knows by its ids; it takes the category you picked if
+// it has none of its own, and any transfer pairing the typed row had. The typed
+// row goes, and `relink` says where its payment links should point now.
+function mergeManualIntoBank(transactions, manualId, bankId) {
+  const rows = (transactions || []).map((t) => Object.assign({}, t));
+  const m = rows.find((t) => t && t.id === manualId);
+  const b = rows.find((t) => t && t.id === bankId);
+  if (!m || !b || !m.manual || b.manual) return { ok: false, transactions: rows, relink: [] };
+  if (!b.override_label && m.override_label) b.override_label = m.override_label;
+  if (!b.transfer_pair && m.transfer_pair) b.transfer_pair = m.transfer_pair;
+  rows.forEach((t) => {
+    if (t && t.transfer_pair === m.id) t.transfer_pair = b.id;
+  });
+  return {
+    ok: true,
+    transactions: rows.filter((t) => t !== m),
+    relink: [{ from: m.id, to: b.id, date: b.date }]
+  };
+}
+
 // "Transfer" for a move between your own accounts, unless you've made a
 // category by that name that counts as spending — then the next free name.
 function accountTransferCategory(categoryMeta) {
@@ -8899,6 +8959,8 @@ function pairAcrossSources(existing, incoming, gapOf) {
     if (!tx || !tx.date || !tx.account_id || !Number.isFinite(tx.amount)) return;
     existing.forEach((t, i) => {
       if (!t || t.pending || !t.date) return;
+      // A row you typed in is only ever suggested as a match, never claimed.
+      if (t.manual) return;
       if (t.account_id !== tx.account_id || t.amount !== tx.amount) return;
       const gap = gapOf(t, tx);
       if (gap == null) return;
@@ -9586,7 +9648,7 @@ class ManualBalanceModal extends Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "Add balance" });
+    contentEl.createEl("h2", { text: "Manual Add" });
     const form = { account_id: this.accounts[0].id, date: todayLocal(), value: "" };
     new Setting(contentEl).setName("Account").addDropdown((dd) => {
       this.accounts.forEach((a) => dd.addOption(a.id, a.label));
@@ -15688,6 +15750,12 @@ class BudgetDashboardView extends ItemView {
     if (transfers.length) this.renderTransferInbox(container, transfers, ctx);
     else this.transferInboxOpen = false;
 
+    // The bank's row of a possible duplicate waits for that question first.
+    const duplicates = manualDuplicateCandidates(ctx.allTx);
+    duplicates.forEach((d) => inReview.add(d.bank.id));
+    if (duplicates.length) this.renderDuplicateInbox(container, duplicates, ctx);
+    else this.duplicateInboxOpen = false;
+
     const uncategorized = ctx.allTx.filter((t) => t.resolved_category === "Uncategorized" && !inReview.has(t.id));
 
     if (uncategorized.length) {
@@ -15767,6 +15835,59 @@ class BudgetDashboardView extends ItemView {
 
   // The tab's main content: the latest transactions, full width, each with its
   // category and a way to change it.
+  // A transaction you typed in next to the bank's row for it: the same account
+  // and amount a few days apart. Same badge-and-panel as the transfer inbox.
+  // Nothing merges until you say they're the same purchase.
+  renderDuplicateInbox(container, candidates, ctx) {
+    const { rules } = ctx;
+    const n = candidates.length;
+    if (!this.duplicateInboxId) this.duplicateInboxId = `budget-duplicate-inbox-${Math.random().toString(36).slice(2, 8)}`;
+    const inbox = container.createDiv({ cls: "budget-inbox budget-transfer-inbox" });
+    const badge = inbox.createEl("button", { cls: "budget-inbox-badge", attr: { type: "button", "aria-controls": this.duplicateInboxId } });
+    badge.createSpan({ text: "!", cls: "budget-inbox-dot", attr: { "aria-hidden": "true" } });
+    badge.createSpan({ text: n === 1 ? "1 possible duplicate to review" : `${n} possible duplicates to review`, cls: "budget-inbox-text" });
+    const action = badge.createSpan({ cls: "budget-inbox-action" });
+    badge.createSpan({ cls: "budget-inbox-chevron", attr: { "aria-hidden": "true" } });
+    const panel = inbox.createDiv({ cls: "budget-inbox-panel", attr: { id: this.duplicateInboxId, role: "region", "aria-label": "Possible duplicates of transactions you added" } });
+    const list = panel.createDiv({ cls: "budget-inbox-panel-inner" }).createDiv({ cls: "budget-card budget-inbox-list" });
+    list.createEl("p", {
+      text: "You added one by hand and the bank has one with the same amount. If it's the same purchase, merge them.",
+      cls: "budget-muted budget-transfer-intro"
+    });
+    const accountName = (id) => {
+      const a = (ctx.accounts || []).find((x) => x && x.id === id);
+      return a ? accountLabel(a) : id;
+    };
+    candidates.slice(0, isMobileApp() ? 10 : 20).forEach((c) => {
+      const row = list.createDiv({ cls: "budget-transfer-pair" });
+      [[c.manual, "added by you"], [c.bank, "from the bank"]].forEach(([t, note]) => {
+        const half = row.createDiv({ cls: "budget-recent-row budget-transfer-half" });
+        const main = half.createDiv({ cls: "budget-recent-main" });
+        main.createSpan({ text: displayMerchant(t.merchant_raw, rules), cls: "budget-recent-name" }).setAttr("title", t.merchant_raw || "");
+        main.createSpan({ text: `${t.date} \u00b7 ${accountName(t.account_id)} \u00b7 ${note}`, cls: "budget-recent-date" });
+        half.createDiv({ cls: "budget-recent-meta" }).createSpan({
+          text: t.amount > 0 ? `+$${t.amount.toFixed(2)}` : `-$${Math.abs(t.amount).toFixed(2)}`,
+          cls: t.amount > 0 ? "budget-positive budget-tx-amount" : "budget-negative budget-tx-amount"
+        });
+      });
+      const btns = row.createDiv({ cls: "budget-goal-btns budget-transfer-btns" });
+      const yes = btns.createEl("button", { text: "Same purchase", cls: "budget-btn mod-cta" });
+      yes.setAttr("title", "Keep the bank's entry and drop the one you added. Your category carries over.");
+      yes.onclick = async () => {
+        await this.plugin.mergeManualDuplicate(c.manual.id, c.bank.id);
+        new Notice("Merged into the bank's entry.");
+        await this.plugin.refreshAfterDataChange();
+      };
+      const no = btns.createEl("button", { text: "Not the same", cls: "budget-btn" });
+      no.setAttr("title", "Two separate purchases; don't suggest these two again");
+      no.onclick = async () => {
+        await this.plugin.dismissManualDuplicate(c.manual.id, c.bank.id);
+        await this.plugin.refreshAfterDataChange();
+      };
+    });
+    bindInboxToggle({ inbox, badge, action }, { open: !!this.duplicateInboxOpen, onChange: (open) => (this.duplicateInboxOpen = open) });
+  }
+
   // Pairs that look like money moved between your own accounts, for you to
   // confirm. Same badge-and-panel as the label inbox. Each shows both halves;
   // Transfer files both and takes them off the list, Not a transfer stops the
@@ -16009,7 +16130,7 @@ class BudgetDashboardView extends ItemView {
     const addBtn = side.createEl("button", { text: "Add account", cls: "budget-btn budget-pf-add" });
     addBtn.onclick = () => this.plugin.promptPortfolioAccount(null, null);
     if (accounts.length) {
-      const balBtn = side.createEl("button", { text: "Add balance", cls: "budget-btn budget-pf-add" });
+      const balBtn = side.createEl("button", { text: "Manual Add", cls: "budget-btn budget-pf-add" });
       balBtn.setAttr("title", "Type in what an account is worth, without a statement");
       balBtn.onclick = () => this.plugin.promptAddInvestmentBalance();
     }
@@ -18063,8 +18184,8 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     this.addCommand({ id: "open-budget-settings", name: "Open settings and rules", callback: () => this.openSettings() });
     this.addCommand({ id: "sync-simplefin", name: "Sync transactions (SimpleFIN)", callback: () => this.syncSimpleFIN() });
     this.addCommand({ id: "export-data", name: "Export\u2026", callback: () => this.promptExport() });
-    this.addCommand({ id: "add-transaction", name: "Manual Add", callback: () => this.promptAddTransaction() });
-    this.addCommand({ id: "add-investment-balance", name: "Add investment balance", callback: () => this.promptAddInvestmentBalance() });
+    this.addCommand({ id: "add-transaction", name: "Manual Add transaction", callback: () => this.promptAddTransaction() });
+    this.addCommand({ id: "add-investment-balance", name: "Manual Add investment balance", callback: () => this.promptAddInvestmentBalance() });
     this.addCommand({ id: "export-transaction-notes", name: "Export transactions to notes", callback: () => this.exportTransactionNotes() });
     this.addCommand({ id: "export-financial-snapshot", name: "Export financial snapshot", callback: () => this.exportSnapshot() });
     this.addCommand({
@@ -19250,6 +19371,39 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     }
     if (n) await writeJSON(this.app, FILES.transactions, ledger);
     return n;
+  }
+
+  // Merges a typed-in transaction into the bank's row for the same purchase,
+  // and points anything that was linked to the typed one at the bank's.
+  async mergeManualDuplicate(manualId, bankId) {
+    const ledger = await readJSON(this.app, FILES.transactions, []);
+    const result = mergeManualIntoBank(ledger, manualId, bankId);
+    if (!result.ok) return false;
+    const files = [
+      [FILES.installmentDebts, "applied_payments"],
+      [FILES.revolvingDebts, "applied_payments"],
+      [FILES.fixedExpenses, "linked_payments"],
+      [FILES.savingsGoals, "contributions"]
+    ];
+    for (const [file, field] of files) {
+      const records = await readJSON(this.app, file, []);
+      const r = applyTransactionRelinks(records, result.relink, field);
+      if (r.moved || r.deduped) await writeJSON(this.app, file, records);
+    }
+    await writeJSON(this.app, FILES.transactions, result.transactions);
+    return true;
+  }
+
+  // "Not the same": these two are never suggested together again.
+  async dismissManualDuplicate(manualId, bankId) {
+    const ledger = await readJSON(this.app, FILES.transactions, []);
+    const a = ledger.find((t) => t && t.id === manualId);
+    const b = ledger.find((t) => t && t.id === bankId);
+    if (!a || !b) return false;
+    a.not_duplicate_with = [...new Set((a.not_duplicate_with || []).concat(b.id))];
+    b.not_duplicate_with = [...new Set((b.not_duplicate_with || []).concat(a.id))];
+    await writeJSON(this.app, FILES.transactions, ledger);
+    return true;
   }
 
   // "Not a transfer": these two are never suggested together again.

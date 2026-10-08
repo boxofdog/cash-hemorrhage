@@ -57,8 +57,10 @@ savings focus**.
   link in Obsidian. Transactions get one note per month. The notes are
   read-only copies: editing them changes nothing in the plugin, and the next
   export rewrites them.
-- **Manual entry.** No bank link or CSV needed: **Manual Add** and **Add
-  balance** (for investment accounts) take what you type.
+- **Manual entry.** No bank link or CSV needed: **Manual Add** on the
+  Transactions and Portfolio tabs takes what you type. If a bank import later
+  brings the same purchase, the plugin suggests merging the two and waits for
+  you.
 
 Works on desktop and mobile.
 

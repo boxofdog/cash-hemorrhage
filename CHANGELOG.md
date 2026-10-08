@@ -3,8 +3,15 @@
 ## 1.30.1 (unreleased)
 
 ### Changed
-- **"Add transaction" is now "Manual Add"**: the button on the Transactions tab,
-  the dialog and the command.
+- **"Add transaction" and "Add balance" are now "Manual Add"**: the buttons on
+  the Transactions and Portfolio tabs, and their dialogs. The two commands are
+  **Manual Add transaction** and **Manual Add investment balance**.
+- **A transaction you typed in and the bank's version of it are suggested as a
+  match, not merged.** When an import or sync brings a row with the same
+  account and amount within three days, a **possible duplicate** notice on the
+  Transactions tab shows both. **Same purchase** keeps the bank's entry (and
+  your category); **Not the same** keeps both and doesn't ask again. Sync no
+  longer merges your typed rows on its own.
 
 ## 1.30.0
 
