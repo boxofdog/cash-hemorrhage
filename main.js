@@ -1400,6 +1400,20 @@ function pfSnapshotFromForm(read, form) {
   return { snapshot, errors };
 }
 
+// An investment balance typed in by hand, as the snapshot a statement would
+// have made: one day, with an ending value.
+function buildManualBalance(form) {
+  const r = pfSnapshotFromForm(null, {
+    account_id: form.account_id,
+    statement_start: form.date,
+    statement_end: form.date,
+    values: { ending_value: form.value }
+  });
+  if (r.errors.length) return { ok: false, error: r.errors[0].replace(/^Missing ending value\.$/, "Enter what it's worth.") };
+  r.snapshot.manual = true;
+  return { ok: true, snapshot: r.snapshot };
+}
+
 // Where a snapshot goes: one per account per statement end. Re-importing the
 // same statement changes nothing; a different read of it needs saying so.
 function pfPlaceSnapshot(snapshots, snapshot) {
@@ -1605,8 +1619,7 @@ This folder holds everything the Budget Tracker plugin keeps.
 
 - **data/**: the plugin's own files (accounts, debts, bills, goals, transactions, rules). Change them from the plugin rather than by hand.
 - **imports/**: drop bank CSV exports here, then run **Import CSV**. A clean import deletes the CSV, so keep your own copy in another folder.
-- **exports/**: **Export Snapshot** saves a Markdown summary and a CSV copy here.
-- **exports/Transactions/**: **Export transactions to notes** writes one note per month here. Read-only copies, rewritten on each export.
+- **exports/**: **Export** saves read-only Markdown notes here (and a CSV with the snapshot), rewritten on each export. Editing them changes nothing in the plugin.
 
 Open the dashboard from the wallet icon in the ribbon, or the command palette: "Budget Tracker: Open in sidebar". Settings → Budget Tracker has everything else.
 `;
@@ -5067,105 +5080,128 @@ function snapshotTable(head, rows, total = null) {
   return out.join("\n");
 }
 
-function snapshotMarkdown(snap) {
+// `only` limits the note to some sections (and drops the title and the closing
+// note), for the one-kind-of-data exports.
+function snapshotMarkdown(snap, { only = null } = {}) {
+  const want = (key) => !only || only.includes(key);
   const m = snapshotMoney;
   const d = (iso) => (iso ? formatChartDate(iso) : "—");
   const out = [];
-  out.push(`# Financial snapshot — ${formatChartDate(snap.date)}`, "");
+  if (!only) out.push(`# Financial snapshot — ${formatChartDate(snap.date)}`, "");
   const inc = snap.income;
-  out.push("## At a glance", "");
-  out.push(
-    snapshotTable(["", "Amount"], [
-      ["Cash on hand", m(snap.cashTotal)],
-      ["Credit available", m(snap.creditAvailable)],
-      ["Total debt", m(snap.debtTotal)],
-      ["Invested (latest statements)", m(snap.investedTotal)],
-      ["Estimated monthly income", inc.monthly != null ? m(inc.monthly) : "—"],
-      ["Estimated monthly outgoings", m(inc.outflow)]
-    ], ["Net surplus / deficit per month", inc.surplus != null ? m(inc.surplus) : "—"]),
-    ""
-  );
-
-  out.push("## Income & cash flow", "");
-  out.push(
-    snapshotTable(["", "Amount"], [
-      ["Latest paycheck", inc.paycheck ? `${m(inc.paycheck.amount)} (${d(inc.paycheck.date)})` : "none recorded"],
-      ["Pay cadence", inc.cadence ? PAY_CADENCE_NAMES[inc.cadence] + (inc.cadenceInferred ? " (detected)" : "") : "not set"],
-      ["Estimated monthly net income", inc.monthly != null ? m(inc.monthly) : "—"],
-      ["Debt minimums", `-${m(snap.debtMonthly)}`],
-      ["Recurring bills", `-${m(snap.billsMonthly)}`],
-      ["Subscriptions", `-${m(snap.subscriptionsMonthly)}`],
-      ["Projected necessities", `-${m(snap.necessitiesMonthly)}`]
-    ], ["Net surplus / deficit", inc.surplus != null ? m(inc.surplus) : "—"]),
-    ""
-  );
-
-  out.push("## Cash", "");
-  out.push(
-    snapshotTable(["Account", "Type", "Balance", "As of"],
-      snap.cash.map((c) => [c.name + (c.fund ? ` (${c.fund})` : ""), c.type, c.balance != null ? m(c.balance) : "—", c.asOf ? d(c.asOf) : "—"]),
-      ["Total", "", m(snap.cashTotal), ""]),
-    ""
-  );
-
-  if (snap.credit.length) {
-    out.push("## Credit", "");
+  if (want("glance")) {
+    out.push("## At a glance", "");
     out.push(
-      snapshotTable(["Card", "Limit", "Balance", "Available"],
-        snap.credit.map((c) => [c.name, c.limit != null ? m(c.limit) : "no limit set", m(c.balance), c.available != null ? m(c.available) : "—"]),
-        ["Total available", "", "", m(snap.creditAvailable)]),
+      snapshotTable(["", "Amount"], [
+        ["Cash on hand", m(snap.cashTotal)],
+        ["Credit available", m(snap.creditAvailable)],
+        ["Total debt", m(snap.debtTotal)],
+        ["Invested (latest statements)", m(snap.investedTotal)],
+        ["Estimated monthly income", inc.monthly != null ? m(inc.monthly) : "—"],
+        ["Estimated monthly outgoings", m(inc.outflow)]
+      ], ["Net surplus / deficit per month", inc.surplus != null ? m(inc.surplus) : "—"]),
       ""
     );
   }
 
-  if (snap.savings.length || snap.funds.length) {
-    out.push("## Savings", "");
-    const rows = [
-      ...snap.savings.map((g) => [g.name, m(g.saved), m(g.target), g.targetDate ? d(g.targetDate) : "no date"]),
-      ...snap.funds.map((f) => [`${f.name} (capped fund)`, f.balance != null ? m(f.balance) : "—", m(f.cap), "—"])
+  if (want("income")) {
+    out.push("## Income & cash flow", "");
+    out.push(
+      snapshotTable(["", "Amount"], [
+        ["Latest paycheck", inc.paycheck ? `${m(inc.paycheck.amount)} (${d(inc.paycheck.date)})` : "none recorded"],
+        ["Pay cadence", inc.cadence ? PAY_CADENCE_NAMES[inc.cadence] + (inc.cadenceInferred ? " (detected)" : "") : "not set"],
+        ["Estimated monthly net income", inc.monthly != null ? m(inc.monthly) : "—"],
+        ["Debt minimums", `-${m(snap.debtMonthly)}`],
+        ["Recurring bills", `-${m(snap.billsMonthly)}`],
+        ["Subscriptions", `-${m(snap.subscriptionsMonthly)}`],
+        ["Projected necessities", `-${m(snap.necessitiesMonthly)}`]
+      ], ["Net surplus / deficit", inc.surplus != null ? m(inc.surplus) : "—"]),
+      ""
+    );
+  }
+
+  if (want("cash")) {
+    out.push("## Cash", "");
+    out.push(
+      snapshotTable(["Account", "Type", "Balance", "As of"],
+        snap.cash.map((c) => [c.name + (c.fund ? ` (${c.fund})` : ""), c.type, c.balance != null ? m(c.balance) : "—", c.asOf ? d(c.asOf) : "—"]),
+        ["Total", "", m(snap.cashTotal), ""]),
+      ""
+    );
+  }
+
+  if (want("credit")) {
+    if (snap.credit.length) {
+      out.push("## Credit", "");
+      out.push(
+        snapshotTable(["Card", "Limit", "Balance", "Available"],
+          snap.credit.map((c) => [c.name, c.limit != null ? m(c.limit) : "no limit set", m(c.balance), c.available != null ? m(c.available) : "—"]),
+          ["Total available", "", "", m(snap.creditAvailable)]),
+        ""
+      );
+    }
+  }
+
+  if (want("savings")) {
+    if (snap.savings.length || snap.funds.length) {
+      out.push("## Savings", "");
+      const rows = [
+        ...snap.savings.map((g) => [g.name, m(g.saved), m(g.target), g.targetDate ? d(g.targetDate) : "no date"]),
+        ...snap.funds.map((f) => [`${f.name} (capped fund)`, f.balance != null ? m(f.balance) : "—", m(f.cap), "—"])
+      ];
+      const saved = round2(snap.savings.reduce((s, g) => s + g.saved, 0) + snap.funds.reduce((s, f) => s + (f.balance || 0), 0));
+      out.push(snapshotTable(["Goal", "Saved", "Target", "By"], rows, ["Total saved", m(saved), "", ""]), "");
+    }
+  }
+
+  if (want("debts")) {
+    out.push("## Debts", "");
+    const debtRows = [
+      // Paid-off debts aren't listed; they'd add a row of zeros.
+      ...snap.cards.filter((c) => c.balance > 0).map((c) => [c.name, m(c.balance), c.apr != null ? `${c.apr}% APR` : "—", `${m(c.minimum)} min`]),
+      ...snap.plans.filter((p) => p.balance > 0).map((p) => [
+        p.name,
+        m(p.balance),
+        `${p.apr != null ? `${p.apr}% APR, ` : ""}${m(p.installment)} ${p.frequency}, ${p.remaining != null ? `${p.remaining} left` : "never paid off at this payment"}`,
+        `${m(p.monthly)}/mo`
+      ])
     ];
-    const saved = round2(snap.savings.reduce((s, g) => s + g.saved, 0) + snap.funds.reduce((s, f) => s + (f.balance || 0), 0));
-    out.push(snapshotTable(["Goal", "Saved", "Target", "By"], rows, ["Total saved", m(saved), "", ""]), "");
+    out.push(debtRows.length ? snapshotTable(["Debt", "Balance", "Terms", "Monthly"], debtRows, ["Total", m(snap.debtTotal), "", `${m(snap.debtMonthly)}/mo`]) : "_No debts tracked._", "");
   }
 
-  out.push("## Debts", "");
-  const debtRows = [
-    // Paid-off debts aren't listed; they'd add a row of zeros.
-    ...snap.cards.filter((c) => c.balance > 0).map((c) => [c.name, m(c.balance), c.apr != null ? `${c.apr}% APR` : "—", `${m(c.minimum)} min`]),
-    ...snap.plans.filter((p) => p.balance > 0).map((p) => [
-      p.name,
-      m(p.balance),
-      `${p.apr != null ? `${p.apr}% APR, ` : ""}${m(p.installment)} ${p.frequency}, ${p.remaining != null ? `${p.remaining} left` : "never paid off at this payment"}`,
-      `${m(p.monthly)}/mo`
-    ])
-  ];
-  out.push(debtRows.length ? snapshotTable(["Debt", "Balance", "Terms", "Monthly"], debtRows, ["Total", m(snap.debtTotal), "", `${m(snap.debtMonthly)}/mo`]) : "_No debts tracked._", "");
-
-  if (snap.bills.length) {
-    out.push("## Recurring bills", "");
-    out.push(snapshotTable(["Bill", "Amount", "When", "Monthly"], snap.bills.map((b) => [b.name, m(b.amount), b.cadence, m(b.monthly)]), ["Total", "", "", m(snap.billsMonthly)]), "");
+  if (want("bills")) {
+    if (snap.bills.length) {
+      out.push("## Recurring bills", "");
+      out.push(snapshotTable(["Bill", "Amount", "When", "Monthly"], snap.bills.map((b) => [b.name, m(b.amount), b.cadence, m(b.monthly)]), ["Total", "", "", m(snap.billsMonthly)]), "");
+    }
   }
 
-  out.push("## Subscriptions", "");
-  out.push(snap.subscriptions.length
-    ? snapshotTable(["Service", "Cadence", "Last charge", "Monthly"], snap.subscriptions.map((s) => [s.name, s.cadence, m(s.latest), m(s.monthly)]), ["Total", "", "", m(snap.subscriptionsMonthly)])
-    : "_No active subscriptions._", "");
-
-  if (snap.necessities.length) {
-    out.push("## Projected necessities", "");
-    out.push(snapshotTable(["Category", "Typical purchase", "Every", "Last 90 days", "Per month"],
-      snap.necessities.map((n) => [n.name, n.typical != null ? m(n.typical) : "—", n.everyDays != null ? `${n.everyDays} day${n.everyDays === 1 ? "" : "s"}` : "not enough history", m(n.spent90), m(n.monthly)]),
-      ["Total", "", "", "", m(snap.necessitiesMonthly)]), "");
+  if (want("subscriptions")) {
+    out.push("## Subscriptions", "");
+    out.push(snap.subscriptions.length
+      ? snapshotTable(["Service", "Cadence", "Last charge", "Monthly"], snap.subscriptions.map((s) => [s.name, s.cadence, m(s.latest), m(s.monthly)]), ["Total", "", "", m(snap.subscriptionsMonthly)])
+      : "_No active subscriptions._", "");
   }
 
-  if (snap.investments.length) {
-    out.push("## Investments", "");
-    out.push(snapshotTable(["Account", "Kind", "Value", "Statement"],
-      snap.investments.map((i) => [i.name, i.kind || "—", i.value != null ? m(i.value) : "—", i.asOf ? d(i.asOf) : "none yet"]),
-      ["Total", "", m(snap.investedTotal), ""]), "");
+  if (want("necessities")) {
+    if (snap.necessities.length) {
+      out.push("## Projected necessities", "");
+      out.push(snapshotTable(["Category", "Typical purchase", "Every", "Last 90 days", "Per month"],
+        snap.necessities.map((n) => [n.name, n.typical != null ? m(n.typical) : "—", n.everyDays != null ? `${n.everyDays} day${n.everyDays === 1 ? "" : "s"}` : "not enough history", m(n.spent90), m(n.monthly)]),
+        ["Total", "", "", "", m(snap.necessitiesMonthly)]), "");
+    }
   }
 
-  out.push("_Monthly figures are estimates: pay × paychecks a month, bills and debts at their scheduled amounts, subscriptions from their usual charge and spacing, and necessities at the last 90 days' rate._");
+  if (want("investments")) {
+    if (snap.investments.length) {
+      out.push("## Investments", "");
+      out.push(snapshotTable(["Account", "Kind", "Value", "Statement"],
+        snap.investments.map((i) => [i.name, i.kind || "—", i.value != null ? m(i.value) : "—", i.asOf ? d(i.asOf) : "none yet"]),
+        ["Total", "", m(snap.investedTotal), ""]), "");
+    }
+  }
+
+  if (!only) out.push("_Monthly figures are estimates: pay × paychecks a month, bills and debts at their scheduled amounts, subscriptions from their usual charge and spacing, and necessities at the last 90 days' rate._");
   return out.join("\n") + "\n";
 }
 
@@ -5358,9 +5394,132 @@ function buildTransactionNotes(transactions, accounts = []) {
   return files;
 }
 
-async function generateFinancialSnapshot(app, settings = {}) {
+// ---------- one kind of data, as a note ----------
+
+// What the "one kind of data" export offers, in the order it's listed.
+const EXPORT_KINDS = [
+  { key: "transactions", label: "Transactions" },
+  { key: "spending", label: "Spending by month" },
+  { key: "debts", label: "Debts" },
+  { key: "income", label: "Income" },
+  { key: "accounts", label: "Cash and credit" },
+  { key: "savings", label: "Savings goals" },
+  { key: "bills", label: "Bills and subscriptions" },
+  { key: "portfolio", label: "Portfolio" }
+];
+
+const EXPORT_NOTE_WARNING = "Made by Budget Tracker. Changes here are overwritten the next time you export.";
+
+// A note's title, a date property, the body and the overwrite warning.
+function exportNote(title, body, todayStr) {
+  return ["---", `exported: ${todayStr}`, "---", `# ${title}`, "", ...body, "", `_${EXPORT_NOTE_WARNING}_`, ""].join("\n");
+}
+
+// The files for one kind of data, as { path, content } with the path under
+// Budget/exports. Pure: `data` is what readExportData returns.
+function buildDataNotes(kind, data, { todayStr = todayLocal(), settings = {} } = {}) {
+  if (kind === "transactions") {
+    return buildTransactionNotes(data.transactions, data.accounts).map((f) => ({ path: `Transactions/${f.name}.md`, content: f.content }));
+  }
+  const snap = buildFinancialSnapshot(data, { todayStr, settings });
+  const sections = (keys) => snapshotMarkdown(snap, { only: keys }).trimEnd().split("\n");
+  // A section that repeats the note's own title doesn't need its heading.
+  const one = (name, body) => {
+    const at = body.indexOf(`## ${name}`);
+    const lines = at === 0 ? body.slice(2) : body;
+    return [{ path: `${name}.md`, content: exportNote(name, lines, todayStr) }];
+  };
+
+  if (kind === "debts") return one("Debts", sections(["debts"]));
+  if (kind === "accounts") return one("Cash and credit", sections(["cash", "credit"]));
+  if (kind === "savings") return one("Savings goals", sections(["savings"]));
+  if (kind === "bills") return one("Bills and subscriptions", sections(["bills", "subscriptions", "necessities"]));
+
+  if (kind === "income") {
+    const history = (data.paycheckHistory || []).filter((p) => p && p.date && Number(p.amount) > 0).sort((a, b) => (a.date < b.date ? 1 : -1));
+    const body = sections(["income"]);
+    if (history.length) {
+      body.push("", "## Paychecks you entered", "", snapshotTable(["Date", "Amount"], history.map((p) => [p.date, snapshotMoney(p.amount)])));
+    }
+    return one("Income", body);
+  }
+
+  if (kind === "portfolio") {
+    const accounts = normalizePortfolioAccounts(data.portfolioAccounts || []);
+    const label = new Map(accounts.map((a) => [a.id, a.label]));
+    const rows = (data.portfolioSnapshots || [])
+      .filter((s) => s && s.statement_end && Number.isFinite(s.ending_value))
+      .sort((a, b) => (a.statement_end < b.statement_end ? 1 : a.statement_end > b.statement_end ? -1 : 0))
+      .map((s) => [
+        label.get(s.account_id) || s.account_id || "—",
+        s.statement_end,
+        s.beginning_value != null ? snapshotMoney(s.beginning_value) : "—",
+        s.contributions != null ? snapshotMoney(s.contributions) : "—",
+        snapshotMoney(s.ending_value)
+      ]);
+    const body = sections(["investments"]);
+    if (rows.length) body.push("", "## Statements and balances", "", snapshotTable(["Account", "Period end", "Beginning", "Contributions", "Ending"], rows));
+    return one("Portfolio", body);
+  }
+
+  if (kind === "spending") {
+    const meta = data.categoryMeta || [];
+    const body = [];
+    availableMonths(data.transactions || []).forEach((mo) => {
+      const { totals, transferTotal } = categorySpendTotals(transactionsInMonth(data.transactions, mo.key), meta);
+      const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+      if (!entries.length && !transferTotal) return;
+      const total = round2(entries.reduce((s, [, v]) => s + v, 0));
+      body.push(`## ${mo.label}`, "");
+      body.push(entries.length
+        ? snapshotTable(["Category", "Spent", "Share"], entries.map(([c, v]) => [c, snapshotMoney(round2(v)), total > 0 ? `${Math.round((v / total) * 100)}%` : "—"]), ["Total", snapshotMoney(total), ""])
+        : "_No spending._");
+      if (transferTotal > 0) body.push("", `Transfers between your own accounts, not counted above: ${snapshotMoney(round2(transferTotal))}`);
+      body.push("");
+    });
+    if (!body.length) body.push("No spending yet.");
+    return one("Spending by month", body);
+  }
+  return [];
+}
+
+// Every kind, for a full export.
+function buildFullExportNotes(data, opts) {
+  return EXPORT_KINDS.flatMap((k) => buildDataNotes(k.key, data, opts));
+}
+
+// A new transaction from the Add transaction form, or why it can't be saved.
+// `amount` is typed positive and `direction` says which way the money went, so
+// nobody has to remember the sign. A category you pick is your own choice and
+// beats the rules; left on automatic, the rules decide as they do for imports.
+function buildManualTransaction(form, rules = []) {
+  const date = normalizeDate(form.date || "");
+  if (!isISODateString(date)) return { ok: false, error: "Enter a date." };
+  const merchant = String(form.merchant || "").trim();
+  if (!merchant) return { ok: false, error: "Enter what it was for." };
+  const r = parseMoneyInput(form.amount, {});
+  if (!r.ok) return { ok: false, error: `Amount: ${r.message}` };
+  if (r.empty || !(r.value > 0)) return { ok: false, error: "Enter an amount above zero." };
+  if (!form.account_id) return { ok: false, error: "Choose an account." };
+  const amount = round2(form.direction === "in" ? r.value : -r.value);
+  const tx = {
+    id: genId("tx"),
+    date,
+    merchant_raw: merchant,
+    amount,
+    account_id: form.account_id,
+    resolved_category: null,
+    override_label: form.category || null,
+    manual: true
+  };
+  applyCategorization([tx], rules);
+  return { ok: true, tx };
+}
+
+// Every file the exports read, in the shape buildFinancialSnapshot takes.
+async function readExportData(app) {
   const read = (f, d) => readJSON(app, f, d);
-  const data = {
+  return {
     accounts: await read(FILES.accounts, []),
     goals: await read(FILES.savingsGoals, []),
     revolvingDebts: await read(FILES.revolvingDebts, []),
@@ -5374,6 +5533,10 @@ async function generateFinancialSnapshot(app, settings = {}) {
     portfolioAccounts: await read(FILES.portfolioAccounts, []),
     portfolioSnapshots: await read(FILES.portfolioSnapshots, [])
   };
+}
+
+async function generateFinancialSnapshot(app, settings = {}) {
+  const data = await readExportData(app);
   const snapshot = buildFinancialSnapshot(data, { settings });
   return { snapshot, markdown: snapshotMarkdown(snapshot), csv: snapshotCSV(snapshot) };
 }
@@ -9328,6 +9491,130 @@ class IntroTourModal extends Modal {
   }
 }
 
+// The export dialog. Each row does its job and closes the dialog.
+class ExportModal extends Modal {
+  constructor(app, actions) {
+    super(app);
+    this.actions = actions;
+    this.kind = EXPORT_KINDS[0].key;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl("h2", { text: "Export" });
+    const go = (fn) => () => {
+      this.close();
+      return fn();
+    };
+    new Setting(contentEl)
+      .setName("Snapshot")
+      .setDesc("Where you stand today, in one note and a CSV. Also copied.")
+      .addButton((b) => b.setButtonText("Export").setCta().onClick(go(() => this.actions.snapshot())));
+    new Setting(contentEl)
+      .setName("Full export")
+      .setDesc("The snapshot, plus a note for each kind of data.")
+      .addButton((b) => b.setButtonText("Export").onClick(go(() => this.actions.full())));
+    new Setting(contentEl)
+      .setName("One kind of data")
+      .addDropdown((dd) => {
+        EXPORT_KINDS.forEach((k) => dd.addOption(k.key, k.label));
+        dd.setValue(this.kind).onChange((v) => (this.kind = v));
+      })
+      .addButton((b) => b.setButtonText("Export").onClick(go(() => this.actions.kind(this.kind))));
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+// Add a transaction by hand.
+class ManualTransactionModal extends Modal {
+  constructor(app, { accounts, categories, rules }, onSubmit) {
+    super(app);
+    this.accounts = accounts;
+    this.categories = categories;
+    this.rules = rules;
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl("h2", { text: "Add transaction" });
+    const form = { date: todayLocal(), merchant: "", amount: "", direction: "out", account_id: this.accounts[0].id, category: "" };
+    new Setting(contentEl).setName("Date").addText((t) => bindDateInput(t, form.date).onChange((v) => (form.date = v.trim())));
+    new Setting(contentEl).setName("What it was for").addText((t) => t.setPlaceholder("Merchant or note").onChange((v) => (form.merchant = v)));
+    const amountRow = new Setting(contentEl).setName("Amount");
+    amountRow.addDropdown((dd) => {
+      dd.addOption("out", "Money out");
+      dd.addOption("in", "Money in");
+      dd.setValue("out").onChange((v) => (form.direction = v));
+    });
+    amountRow.addText((t) => bindMoneyInput(t, amountRow, {}).onChange((v) => (form.amount = v)));
+    new Setting(contentEl).setName("Account").addDropdown((dd) => {
+      this.accounts.forEach((a) => dd.addOption(a.id, accountLabel(a)));
+      dd.setValue(form.account_id).onChange((v) => (form.account_id = v));
+    });
+    new Setting(contentEl).setName("Category").addDropdown((dd) => {
+      dd.addOption("", "Automatic");
+      this.categories.forEach((c) => dd.addOption(c, c));
+      dd.setValue("").onChange((v) => (form.category = v));
+    });
+    const error = contentEl.createDiv({ cls: "budget-field-error" });
+    new Setting(contentEl)
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) =>
+        b.setButtonText("Add").setCta().onClick(() => {
+          const r = buildManualTransaction(form, this.rules);
+          if (!r.ok) {
+            error.setText(r.error);
+            return;
+          }
+          this.close();
+          this.onSubmit(r.tx);
+        })
+      );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+// Type in what an investment account is worth on a date.
+class ManualBalanceModal extends Modal {
+  constructor(app, { accounts }, onSubmit) {
+    super(app);
+    this.accounts = accounts;
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl("h2", { text: "Add balance" });
+    const form = { account_id: this.accounts[0].id, date: todayLocal(), value: "" };
+    new Setting(contentEl).setName("Account").addDropdown((dd) => {
+      this.accounts.forEach((a) => dd.addOption(a.id, a.label));
+      dd.setValue(form.account_id).onChange((v) => (form.account_id = v));
+    });
+    new Setting(contentEl).setName("As of").addText((t) => bindDateInput(t, form.date).onChange((v) => (form.date = v.trim())));
+    const valueRow = new Setting(contentEl).setName("Worth");
+    valueRow.addText((t) => bindMoneyInput(t, valueRow, {}).onChange((v) => (form.value = v)));
+    const error = contentEl.createDiv({ cls: "budget-field-error" });
+    new Setting(contentEl)
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) =>
+        b.setButtonText("Save").setCta().onClick(() => {
+          const r = buildManualBalance(form);
+          if (!r.ok) {
+            error.setText(r.error);
+            return;
+          }
+          this.close();
+          this.onSubmit(r.snapshot);
+        })
+      );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class PaycheckModal extends Modal {
   constructor(app, onSubmit, prefill = {}) {
     super(app);
@@ -13056,8 +13343,8 @@ class BudgetDashboardView extends ItemView {
     addAction(shortLabels ? "Mark Paid" : "Mark Bill Paid", () => this.plugin.promptMarkFixedPaid(), {
       tooltip: "Record a recurring bill as paid and link the transaction that paid it"
     });
-    addAction(shortLabels ? "Export" : "Export Snapshot", () => this.plugin.exportSnapshot(), {
-      tooltip: `Copy a Markdown summary of balances, debts, bills, subscriptions, investments and monthly cash flow, and save it with a CSV copy to ${EXPORT_DIR}`
+    addAction("Export", () => this.plugin.promptExport(), {
+      tooltip: `A snapshot, everything, or one kind of data, saved to ${EXPORT_DIR}`
     });
     // The bar is for what you do DURING a pay period. Adding accounts, plans,
     // card terms and bills is setup, and setup now lives in one place instead of
@@ -15568,8 +15855,10 @@ class BudgetDashboardView extends ItemView {
       `${recent.length} shown`,
       true
     );
+    const addTx = recentCard.createDiv({ cls: "budget-goal-btns budget-add-tx" }).createEl("button", { text: "Add transaction", cls: "budget-btn" });
+    addTx.onclick = () => this.plugin.promptAddTransaction();
     if (recent.length === 0 && !hiddenHere) {
-      recentCard.createEl("p", { text: "Nothing imported yet.", cls: "budget-muted" });
+      recentCard.createEl("p", { text: "Nothing yet.", cls: "budget-muted" });
       return;
     }
     const allLabels = [...new Set(rules.map((r) => r.home_label).concat(allTx.map((t) => t.resolved_category).filter(Boolean)))]
@@ -15719,6 +16008,11 @@ class BudgetDashboardView extends ItemView {
     });
     const addBtn = side.createEl("button", { text: "Add account", cls: "budget-btn budget-pf-add" });
     addBtn.onclick = () => this.plugin.promptPortfolioAccount(null, null);
+    if (accounts.length) {
+      const balBtn = side.createEl("button", { text: "Add balance", cls: "budget-btn budget-pf-add" });
+      balBtn.setAttr("title", "Type in what an account is worth, without a statement");
+      balBtn.onclick = () => this.plugin.promptAddInvestmentBalance();
+    }
 
     // Reminders derive purely from stored snapshot coverage.
     const due = portfolioReminders(snapshots, accounts);
@@ -17768,6 +18062,9 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     this.addCommand({ id: "import-bank-csv", name: "Import bank CSV", callback: () => this.promptImportCSV() });
     this.addCommand({ id: "open-budget-settings", name: "Open settings and rules", callback: () => this.openSettings() });
     this.addCommand({ id: "sync-simplefin", name: "Sync transactions (SimpleFIN)", callback: () => this.syncSimpleFIN() });
+    this.addCommand({ id: "export-data", name: "Export\u2026", callback: () => this.promptExport() });
+    this.addCommand({ id: "add-transaction", name: "Add transaction", callback: () => this.promptAddTransaction() });
+    this.addCommand({ id: "add-investment-balance", name: "Add investment balance", callback: () => this.promptAddInvestmentBalance() });
     this.addCommand({ id: "export-transaction-notes", name: "Export transactions to notes", callback: () => this.exportTransactionNotes() });
     this.addCommand({ id: "export-financial-snapshot", name: "Export financial snapshot", callback: () => this.exportSnapshot() });
     this.addCommand({
@@ -18231,6 +18528,124 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     return r;
   }
 
+  // Opens the export dialog: snapshot, everything, or one kind of data.
+  promptExport() {
+    new ExportModal(this.app, {
+      snapshot: () => this.exportSnapshot(),
+      full: () => this.exportEverything(),
+      kind: (key) => this.exportKind(key)
+    }).open();
+  }
+
+  // Saves files under Budget/exports, making any folders they need.
+  async writeExportFiles(files) {
+    const adapter = this.app.vault.adapter;
+    const made = new Set();
+    for (const f of files) {
+      const parts = `${EXPORT_DIR}/${f.path}`.split("/").slice(0, -1);
+      let dir = "";
+      for (const p of parts) {
+        dir = dir ? `${dir}/${p}` : p;
+        if (made.has(dir)) continue;
+        if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
+        made.add(dir);
+      }
+      await adapter.write(`${EXPORT_DIR}/${f.path}`, f.content);
+    }
+  }
+
+  async exportKind(kind) {
+    if (kind === "transactions") return this.exportTransactionNotes();
+    const label = (EXPORT_KINDS.find((k) => k.key === kind) || {}).label || kind;
+    try {
+      const data = await readExportData(this.app);
+      const files = buildDataNotes(kind, data, { settings: this.settings || {} });
+      await this.writeExportFiles(files);
+      new Notice(`Exported ${label.toLowerCase()} to ${EXPORT_DIR}.`, 6000);
+      return files;
+    } catch (e) {
+      console.error("Budget Tracker: export failed", e);
+      new Notice("Couldn't export \u2014 see the console for details.");
+      return null;
+    }
+  }
+
+  // The snapshot, plus a note for every kind of data.
+  async exportEverything() {
+    try {
+      const snap = await this.exportSnapshot({ copy: false });
+      if (!snap || !snap.saved) throw new Error("snapshot not saved");
+      const data = await readExportData(this.app);
+      const files = buildFullExportNotes(data, { settings: this.settings || {} });
+      await this.writeExportFiles(files);
+      new Notice(`Full export saved to ${EXPORT_DIR}.`, 6000);
+      return files;
+    } catch (e) {
+      console.error("Budget Tracker: full export failed", e);
+      new Notice("Couldn't finish the full export \u2014 see the console for details.");
+      return null;
+    }
+  }
+
+  // Add a transaction by hand, for anyone who'd rather not link or import.
+  async promptAddTransaction() {
+    const accounts = (await readJSON(this.app, FILES.accounts, [])).filter((a) => a && a.id);
+    if (!accounts.length) {
+      new Notice("Add an account first.");
+      return;
+    }
+    const rules = await readJSON(this.app, FILES.rules, []);
+    const all = await readJSON(this.app, FILES.transactions, []);
+    const meta = await readJSON(this.app, FILES.categories, []);
+    const categories = sortCategoriesByUse(collectCategories(rules, all, meta).map((c) => c.name));
+    new ManualTransactionModal(this.app, { accounts, categories, rules }, async (tx) => {
+      const fresh = await readJSON(this.app, FILES.transactions, []);
+      fresh.push(tx);
+      await writeJSON(this.app, FILES.transactions, fresh);
+      const acct = accounts.find((a) => a.id === tx.account_id);
+      new Notice(`Added ${snapshotMoney(tx.amount)} to ${accountLabel(acct) || "your account"}.`);
+      await this.refreshAfterDataChange();
+    }).open();
+  }
+
+  // Type in what an investment account is worth, without a statement.
+  async promptAddInvestmentBalance() {
+    const accounts = await this.loadPortfolioAccounts();
+    if (!accounts.length) {
+      new Notice("Add an investment account first.");
+      return;
+    }
+    new ManualBalanceModal(this.app, { accounts }, async (snapshot) => {
+      const list = await readJSON(this.app, FILES.portfolioSnapshots, []);
+      const place = pfPlaceSnapshot(list, snapshot);
+      const save = async () => {
+        const fresh = await readJSON(this.app, FILES.portfolioSnapshots, []);
+        const again = pfPlaceSnapshot(fresh, snapshot);
+        if (again.index >= 0) fresh[again.index] = snapshot;
+        else fresh.push(snapshot);
+        fresh.sort((a, b) => (a.statement_end < b.statement_end ? -1 : 1));
+        await writeJSON(this.app, FILES.portfolioSnapshots, fresh);
+        new Notice("Balance saved.");
+        this.refreshDashboard();
+      };
+      if (place.status === "same") {
+        new Notice("That balance is already saved.");
+        return;
+      }
+      if (place.status === "replace") {
+        const old = list[place.index];
+        new ConfirmModal(this.app, {
+          title: "Replace the saved balance?",
+          body: `There's already one for ${snapshot.statement_end}: $${round2(old.ending_value).toFixed(2)} \u2192 $${round2(snapshot.ending_value).toFixed(2)}.`,
+          confirmText: "Replace",
+          onConfirm: save
+        }).open();
+        return;
+      }
+      await save();
+    }).open();
+  }
+
   // Writes the transaction notes into Budget/exports/Transactions.
   async exportTransactionNotes() {
     try {
@@ -18252,7 +18667,8 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     }
   }
 
-  async exportSnapshot() {
+  // `copy: false` is for a full export, which only saves.
+  async exportSnapshot({ copy = true } = {}) {
     let built;
     try {
       built = await generateFinancialSnapshot(this.app, this.settings || {});
@@ -18276,7 +18692,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     }
     let copied = false;
     try {
-      const clip = typeof navigator !== "undefined" && navigator.clipboard;
+      const clip = copy && typeof navigator !== "undefined" && navigator.clipboard;
       if (clip && typeof clip.writeText === "function") {
         await clip.writeText(built.markdown);
         copied = true;
@@ -18284,6 +18700,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     } catch (e) {
       copied = false;
     }
+    if (!copy) return Object.assign({ copied: false, saved, path: saved ? base : null }, built);
     new Notice(
       copied
         ? `Financial snapshot copied to clipboard!${saved ? ` Saved to ${base}.md and .csv.` : ""}`

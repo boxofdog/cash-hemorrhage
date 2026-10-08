@@ -57,7 +57,7 @@ console.log("\n1. A new vault");
   check("card payments and savings moves are transfers, not spending", cats.filter((c) => c.is_transfer).map((c) => c.name), ["Credit Card Payment", "Savings"]);
   check("gas is a necessity; the phone bill is a bill", [cats.find((c) => c.name === "Gas").is_variable_necessity, cats.find((c) => c.name === "Phone Bill").exclude_from_discretionary], [true, true]);
   check("reports the starter categories", r.starterCategories, true);
-  check("the README says what each folder is for", /imports\/\*\*: drop bank CSV exports here/.test(app._store["Budget/README.md"]) && /exports\/\*\*: \*\*Export Snapshot\*\*/.test(app._store["Budget/README.md"]), true);
+  check("the README says what each folder is for", /imports\/\*\*: drop bank CSV exports here/.test(app._store["Budget/README.md"]) && /exports\/\*\*: \*\*Export\*\* saves/.test(app._store["Budget/README.md"]), true);
   check("data files are pretty-printed JSON like the rest", app._store[F.categories].startsWith("[\n  {"), true);
 
   st = await H.setupStatus(app);

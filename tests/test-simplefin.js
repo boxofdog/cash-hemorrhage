@@ -965,7 +965,7 @@ console.log("\n17. In the action bar");
     return bar.children.filter((c) => c.tag === "button").map((b) => `${labelOf(b)}${b.classes.has("budget-sync-on") ? " [on]" : b.classes.has("budget-sync-off") ? " [off]" : ""}`);
   };
   check("next to Import CSV, dimmed when not set up", await render(false),
-    ["Enter Paycheck", "Import CSV", "Sync Transactions [off]", "Mark Bill Paid", "Export Snapshot", "Settings & Setup"]);
+    ["Enter Paycheck", "Import CSV", "Sync Transactions [off]", "Mark Bill Paid", "Export", "Settings & Setup"]);
   check("live when connected", (await render(true))[2], "Sync Transactions [on]");
 }
 

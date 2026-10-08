@@ -3566,3 +3566,6 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 .budget-tour-step { font-size: var(--font-ui-smaller); }
 .budget-tour-body { line-height: 1.5; }
 .budget-tour-btns { display: flex; justify-content: flex-end; gap: 0.5em; flex-wrap: wrap; margin-top: 1.2em; }
+
+/* Add transaction sits above the list with a little air below it. */
+.budget-add-tx { margin-bottom: 0.8em; }

@@ -51,12 +51,14 @@ savings focus**.
   Bridge. Rules and labels categorize transactions; transfers between your own
   accounts are suggested and you confirm them.
 - **Portfolio.** Import investment statements to track balances over time.
-- **Charts and export.** Spending and debt charts, plus a financial snapshot
-  export (CSV and Markdown). **Export transactions to notes** writes your
-  transaction history into `Budget/exports/Transactions/` as one Markdown note
-  per month, plus an index, so you can search and link it in Obsidian. The notes
-  are a read-only copy: editing them changes nothing in the plugin, and the next
+- **Charts and export.** Spending and debt charts. **Export** saves a snapshot,
+  a full export, or one kind of data (transactions, spending by month, debts,
+  income and more) into `Budget/exports/` as Markdown notes you can search and
+  link in Obsidian. Transactions get one note per month. The notes are
+  read-only copies: editing them changes nothing in the plugin, and the next
   export rewrites them.
+- **Manual entry.** No bank link or CSV needed: **Add transaction** and **Add
+  balance** (for investment accounts) take what you type.
 
 Works on desktop and mobile.
 

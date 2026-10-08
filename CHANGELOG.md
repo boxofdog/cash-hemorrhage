@@ -3,12 +3,21 @@
 ## 1.27.6 (unreleased)
 
 ### Added
-- **Export transactions to notes.** From the command palette, **Budget Tracker:
-  Export transactions to notes** writes your transaction history into
-  `Budget/exports/Transactions/`: one note per month with date, merchant,
-  category, account and amount, plus a **Transactions** index that links them.
-  They're searchable and linkable like any note. They're a read-only copy, so
-  editing them changes nothing in the plugin, and each export rewrites them.
+- **Add transactions by hand.** **Add transaction** on the Transactions tab (or
+  the command palette) takes a date, what it was for, an amount, money in or
+  out, the account and, if you like, a category. Left on automatic, your rules
+  pick the category as they do for imports. You no longer need a bank link or a
+  CSV.
+- **Add an investment balance by hand.** **Add balance** on the Portfolio tab
+  saves what an account is worth on a date, without a statement.
+- **One Export button.** It replaces **Export Snapshot** and asks what you
+  want: a **Snapshot** (as before), a **Full export**, or **One kind of data**
+  from a list: transactions, spending by month, debts, income, cash and credit,
+  savings goals, bills and subscriptions, or portfolio.
+- **Notes you can search and link.** Exports are Markdown notes in
+  `Budget/exports/`. Transactions get one note per month plus a **Transactions**
+  index that links them. They're read-only copies: editing them changes nothing
+  in the plugin, and each export rewrites them.
 
 ### Changed
 - **The Budget folder's README now warns about imports.** A clean import deletes
