@@ -3569,3 +3569,12 @@ body.is-mobile .budget-fund-hero-btns .budget-basis-btn,
 
 /* Add transaction sits above the list with a little air below it. */
 .budget-add-tx { margin-bottom: 0.8em; }
+
+/* Apply payment: search every transaction for the one that isn't listed. */
+.budget-apply-find { margin-top: 0.8em; }
+.budget-apply-find > summary { cursor: pointer; color: var(--text-muted); }
+input.budget-apply-search { width: 100%; margin: 0.5em 0; }
+.budget-apply-results { max-height: 14em; overflow-y: auto; }
+
+/* A quiet delete link at the foot of the Change window. */
+.budget-label-foot { margin-top: 0.8em; text-align: center; }

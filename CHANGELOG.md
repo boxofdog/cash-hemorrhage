@@ -3,6 +3,25 @@
 ## 1.31.0 (unreleased)
 
 ### Added
+- **Delete a transaction.** In the **Change** window, **Delete this
+  transaction…** at the bottom. A row the bank sent is remembered, so the next
+  import or sync doesn't bring it back; one you typed in just goes. A
+  transaction a debt, bill or goal is counting can't be deleted until you take
+  it off there first, and the message says which.
+- **Undo an applied payment.** A debt's **Edit** menu has **Applied
+  payments…** once something's been applied. Each payment has **Undo**, which
+  also puts back the due date and installment count it moved.
+- **Find any transaction to apply to a debt.** **Apply payment** has **Not
+  listed? Search all transactions**: type a merchant, category or amount and
+  add the one you mean, whatever it's labelled. Payments before the balance was
+  set aren't offered, since they're already in it, and one another bill is
+  counting says so.
+- **Remove a saved balance or statement.** Each investment account has **Saved
+  statements**, with **Remove** on every one, including balances you typed in.
+- **Delete a closed loan** for good, from **Closed loans**.
+- **Delete a loan from its Edit menu**, not only from inside **Close loan**.
+- **Remove a monthly target** from its **Tune** window.
+- **Clear pay schedule** in Settings, which also works for twice a month.
 - **Twice a month on any two days.** Pay on the 10th and 25th, or the 5th and
   20th? Pick **Twice a month** in Settings → Pay schedule and enter your two
   paydays. A day a short month doesn't have (the 30th in February) is that

@@ -18,7 +18,7 @@ walk.full(ast, (node) => {
 });
 // Reviewed and safe: each is referenced only inside a callback that runs after
 // the declaration finishes (an event handler, a later-called closure).
-const KNOWN = new Set(["frame", "outside", "btn"]);
+const KNOWN = new Set(["frame", "outside", "btn", "drawResults"]);
 const fresh = hits.filter((h) => !KNOWN.has(h.split(": ")[1]));
 console.log(hits.length ? hits.join("\n") : "no self-references");
 if (fresh.length) {

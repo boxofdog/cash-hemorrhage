@@ -3,7 +3,7 @@
     <span .setting-name> Setup
   <div .setting-item>
     <span .setting-name> Create missing files
-    <span .setting-desc> 8 of the plugin's 17 data files are missing. This creates only what's missing; your existing data isn't changed.
+    <span .setting-desc> 9 of the plugin's 18 data files are missing. This creates only what's missing; your existing data isn't changed.
     <span .setting-btn> Create missing files
   <h2> Budget Tracker
   <div .setting-item>
@@ -42,6 +42,10 @@
     <span .setting-name> Detect from my transactions
     <span .setting-desc> Reads deposits categorized “Paycheck” and infers the cadence and anchor date.
     <span .setting-btn> Detect
+  <div .setting-item>
+    <span .setting-name> Clear pay schedule
+    <span .setting-desc> Goes back to detecting it from your paychecks.
+    <span .setting-btn> Clear
   <div .budget-sync-settings>
     <h3> Bank sync (SimpleFIN)
     <p .budget-muted> Optional. Pulls posted transactions and balances straight from your bank through SimpleFIN Bridge, in place of CSV expor

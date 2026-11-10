@@ -296,13 +296,13 @@ console.log("\n7. The Debts tab");
   global.__menus = [];
   button(row, "Edit").onclick();
   const loanMenu = global.__menus[0];
-  check("a loan's menu: Edit loan, Close loan — no Delete or Set balance", loanMenu.items.map((i) => i.title), ["Edit loan", "Close loan\u2026"]);
+  check("a loan's menu: Edit loan, Close loan, Delete — no Set balance", loanMenu.items.map((i) => i.title), ["Edit loan", "Close loan\u2026", "Delete\u2026"]);
   loanMenu.items[0].cb();
   loanMenu.items[1].cb();
   button(root, "Add loan").onclick();
   check("which open the loan dialogs", calls, [["loan", "loan-car"], ["close", "loan-car"], ["loan", undefined]]);
   const closedRow = byCls(root, "budget-loan-closed")[0];
-  check("closed loans, with how they ended", text(closedRow), `Old Civic loan Sold ${H.formatChartDate("2026-06-01")} for $9000.00 · paid off $7000.00 · $2000.00 to you Reopen`);
+  check("closed loans, with how they ended", text(closedRow), `Old Civic loan Sold ${H.formatChartDate("2026-06-01")} for $9000.00 · paid off $7000.00 · $2000.00 to you Reopen Delete`);
   await button(closedRow, "Reopen").onclick();
   check("and a way back", calls.pop(), ["reopen", "old"]);
 

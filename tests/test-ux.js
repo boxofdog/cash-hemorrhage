@@ -190,7 +190,7 @@ console.log("\n4. Budget targets live where the budget math is");
   check("Insights offers a category picker", /Add a target/.test(ins), true);
   check("with a Set target button", /text: "Set target"/.test(ins), true);
   check("opening the same tuner the Tune buttons use", (ins.match(/new TargetTunerModal\(/g) || []).length, 2);
-  check("and saving through the same writer", (ins.match(/setCategoryTarget\(/g) || []).length, 2);
+  check("and saving, or removing, through the same writer", (ins.match(/setCategoryTarget\(/g) || []).length, 3);
 }
 
 console.log("\n  only categories a target can act on are offered");

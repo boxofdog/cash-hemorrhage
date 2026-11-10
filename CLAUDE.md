@@ -115,8 +115,8 @@ These are the user's standing expectations, learned over many versions.
 - Keep logic in pure top-level functions, so the tests can call them. UI goes
   in `Modal` subclasses and `BudgetDashboardView` `render*` methods.
 - SimpleFIN credentials live in `app.secretStorage`, never in a data file.
-- The TDZ scan's known, safe self-references are `frame`, `outside` and
-  `btn` ×4. Anything new fails the scan: check it isn't read while it's still
+- The TDZ scan's known, safe self-references are `frame`, `outside`,
+  `drawResults` and `btn` ×4. Anything new fails the scan: check it isn't read while it's still
   being initialised.
 
 ## Things that are deliberate (don't "fix")

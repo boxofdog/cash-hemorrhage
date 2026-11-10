@@ -10,7 +10,8 @@
     "check": "node --check main.js && node tools/tdz-scan.js && node tools/snapshot.js && node tests/run-tests.js",
     "mutate:loans": "python3 tools/mutate.py tools/mutations/loans.py",
     "mutate:duplicates": "python3 tools/mutate.py tools/mutations/manual-duplicates.py",
-    "mutate:paydays": "python3 tools/mutate.py tools/mutations/pay-days.py"
+    "mutate:paydays": "python3 tools/mutate.py tools/mutations/pay-days.py",
+    "mutate:deletes": "python3 tools/mutate.py tools/mutations/deletes.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",

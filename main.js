@@ -38,6 +38,8 @@ const FILES = {
   categoryOrder: `${DATA_DIR}/category_order.json`,
   // Loans that have ended (sold, traded in, refinanced, paid off), with how.
   closedLoans: `${DATA_DIR}/closed_loans.json`,
+  // Bank rows you deleted, so a later import or sync doesn't bring them back.
+  deletedTransactions: `${DATA_DIR}/deleted_transactions.json`,
   // What SimpleFIN last reported (account names, balances) and when it was
   // asked — never the connection itself, which lives in secret storage.
   simplefinAccounts: `${DATA_DIR}/simplefin_accounts.json`
@@ -3495,6 +3497,130 @@ function transferCandidates(transactions, accounts = null) {
   });
   const latest = (c) => (c.out.date > c.in.date ? c.out.date : c.in.date);
   return out.sort((a, b) => (latest(a) < latest(b) ? 1 : latest(a) > latest(b) ? -1 : 0));
+}
+
+// ---------- deleting and undoing ----------
+
+// How a deleted bank row is recognised if an import or sync brings it back: by
+// SimpleFIN's own id when it has one, and by what the row says otherwise. A row
+// that went through both keeps both.
+function transactionDeleteKeys(tx) {
+  const keys = [];
+  if (tx && tx.simplefin_id && tx.simplefin_account) keys.push(`sf:${tx.simplefin_account}::${tx.simplefin_id}`);
+  if (tx) keys.push(`tx:${tx.date || ""}|${tx.merchant_raw || ""}|${round2(Number(tx.amount) || 0)}|${tx.account_id || ""}`);
+  return keys;
+}
+
+// Incoming rows without the ones you deleted. `deleted` is the saved list.
+function withoutDeletedTransactions(rows, deleted) {
+  const gone = new Set();
+  (deleted || []).forEach((d) => d && (d.keys || []).forEach((k) => gone.add(k)));
+  if (!gone.size) return { kept: rows, dropped: 0 };
+  const kept = (rows || []).filter((t) => !transactionDeleteKeys(t).some((k) => gone.has(k)));
+  return { kept, dropped: (rows || []).length - kept.length };
+}
+
+// Everything that counts a transaction: the debts it was applied to, the bills
+// it paid and the goals it was matched to. A transaction doing any of that
+// isn't deleted from under it.
+function transactionLinks(txId, { installmentDebts = [], revolvingDebts = [], fixedExpenses = [], goals = [] } = {}) {
+  const out = [];
+  [].concat(installmentDebts || [], revolvingDebts || []).forEach((d) => {
+    if (d && (d.applied_payments || []).some((p) => p && p.tx_id === txId)) out.push({ kind: "debt", name: debtLabel(d) });
+  });
+  (fixedExpenses || []).forEach((f) => {
+    if (f && (f.linked_payments || []).some((p) => p && p.tx_id === txId)) out.push({ kind: "bill", name: f.name || "a bill" });
+  });
+  (goals || []).forEach((g) => {
+    if (g && (g.contributions || []).some((c) => c && c.linked_tx_id === txId)) out.push({ kind: "goal", name: g.name || "a goal" });
+  });
+  return out;
+}
+
+// The ledger without one transaction. Its transfer partner, if it had one, is
+// let go rather than left pointing at a row that's gone.
+function ledgerWithout(transactions, txId) {
+  const gone = (transactions || []).find((t) => t && t.id === txId);
+  if (!gone) return { ok: false, transactions: transactions || [], removed: null };
+  const rest = transactions
+    .filter((t) => t !== gone)
+    .map((t) => {
+      if (!t || t.transfer_pair !== txId) return t;
+      const copy = Object.assign({}, t);
+      delete copy.transfer_pair;
+      return copy;
+    });
+  return { ok: true, transactions: rest, removed: gone };
+}
+
+// Applies chosen transactions to a debt record, rolls a covered installment's
+// due date forward, and remembers how it moved so undoing the payment can put
+// it back. Returns the new due date, or null.
+function applyPickedPayments(record, picked, { extra = false } = {}, kind) {
+  const isCC = kind === "cc";
+  const dueBefore = isCC ? record.due_date : record.next_due_date;
+  const remainingBefore = record.remaining_installments;
+  record.applied_payments = (record.applied_payments || []).concat(
+    (picked || []).map((p) => Object.assign({ tx_id: p.id, amount: Math.abs(p.amount), date: p.date, applied_on: todayLocal() }, extra ? { extra: true } : {}))
+  );
+  const advanced = advanceDueDateIfCovered(record, kind);
+  if (advanced && !isLoan(record) && record.applied_payments.length) {
+    const last = record.applied_payments[record.applied_payments.length - 1];
+    last.rolled = { from: dueBefore || null, to: advanced };
+    if (typeof remainingBefore === "number") last.rolled.remaining = remainingBefore;
+  }
+  return advanced;
+}
+
+// Takes one applied payment back off a debt. A loan's due date is worked out
+// from its payments, so it simply recomputes; a plan or card puts back the date
+// and count that payment moved, when it recorded them.
+function undoAppliedPayment(record, index, kind) {
+  const list = record.applied_payments || [];
+  const entry = list[index];
+  if (!entry) return { ok: false, restoredDue: null };
+  record.applied_payments = list.filter((_, i) => i !== index);
+  let restoredDue = null;
+  if (isLoan(record)) {
+    restoredDue = advanceDueDateIfCovered(record, kind);
+  } else if (entry.rolled) {
+    const isCC = kind === "cc";
+    const current = isCC ? record.due_date : record.next_due_date;
+    if (entry.rolled.from && current === entry.rolled.to) {
+      if (isCC) record.due_date = entry.rolled.from;
+      else record.next_due_date = entry.rolled.from;
+      if (typeof entry.rolled.remaining === "number") record.remaining_installments = entry.rolled.remaining;
+      restoredDue = entry.rolled.from;
+    }
+  }
+  return { ok: true, restoredDue, entry };
+}
+
+// A saved balance or statement, gone. One per account per statement end.
+function removePortfolioSnapshot(snapshots, accountId, statementEnd) {
+  const kept = (snapshots || []).filter((s) => !(s && s.account_id === accountId && s.statement_end === statementEnd));
+  return { snapshots: kept, removed: (snapshots || []).length - kept.length };
+}
+
+// Outgoing transactions that match what's typed, newest first, for the "not
+// listed?" search under Apply payment. Nothing is guessed about category or
+// amount; that's the point of it.
+function searchDebits(transactions, { query = "", notBefore = null, excludeIds = null, limit = 20, rules = [] } = {}) {
+  const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
+  const byId = new Map((transactions || []).filter((t) => t && t.id).map((t) => [t.id, t]));
+  const q = String(query || "").trim().toLowerCase();
+  const amountQ = q.replace(/[$,\s]/g, "");
+  return (transactions || [])
+    .filter((t) => t && t.id && Number.isFinite(t.amount) && t.amount < 0 && !skip.has(t.id))
+    .filter((t) => !livePairPartner(t, byId))
+    .filter((t) => !notBefore || !t.date || t.date >= notBefore)
+    .filter((t) => {
+      if (!q) return true;
+      const text = `${t.merchant_raw || ""} ${displayMerchant(t.merchant_raw, rules)} ${t.resolved_category || ""}`.toLowerCase();
+      return text.includes(q) || (!!amountQ && Math.abs(t.amount).toFixed(2).includes(amountQ));
+    })
+    .sort((a, b) => (a.date || "") < (b.date || "") ? 1 : (a.date || "") > (b.date || "") ? -1 : 0)
+    .slice(0, limit);
 }
 
 // ---------- a row you typed in, and the bank's row for the same purchase ----------
@@ -11384,10 +11510,59 @@ class EditBalanceModal extends Modal {
   }
 }
 
+// What's been applied to one debt, newest first, each with Undo.
+class AppliedPaymentsModal extends Modal {
+  constructor(app, debt, transactions, rules, onUndo) {
+    super(app);
+    this.debt = debt;
+    this.transactions = transactions || [];
+    this.rules = rules || [];
+    this.onUndo = onUndo;
+  }
+  onOpen() {
+    this.draw();
+  }
+  draw() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: `Applied payments: ${debtLabel(this.debt)}` });
+    const payments = (this.debt.applied_payments || []).map((p, i) => ({ p, i }));
+    if (!payments.length) {
+      contentEl.createEl("p", { text: "Nothing applied.", cls: "budget-muted" });
+      return;
+    }
+    const byId = new Map(this.transactions.filter((t) => t && t.id).map((t) => [t.id, t]));
+    payments
+      .sort((a, b) => ((b.p.date || "") < (a.p.date || "") ? -1 : (b.p.date || "") > (a.p.date || "") ? 1 : b.i - a.i))
+      .forEach(({ p, i }) => {
+        const row = contentEl.createDiv({ cls: "budget-apply-row" });
+        const tx = p.tx_id ? byId.get(p.tx_id) : null;
+        const label = row.createDiv({ cls: "budget-apply-label" });
+        label.createDiv({ text: tx ? displayMerchant(tx.merchant_raw, this.rules) : p.tx_id ? "(transaction deleted)" : "Typed in" });
+        const meta = label.createDiv({ cls: "budget-apply-meta" });
+        meta.createSpan({ text: p.date || "no date" });
+        if (p.extra) meta.createSpan({ text: "extra toward principal", cls: "budget-badge budget-badge-empty" });
+        row.createSpan({ text: `$${Math.abs(Number(p.amount) || 0).toFixed(2)}`, cls: "budget-amount" });
+        const undo = row.createEl("button", { text: "Undo", cls: "budget-btn" });
+        undo.setAttr("title", "Take this payment back off the debt");
+        undo.onclick = async () => {
+          const next = await this.onUndo(i);
+          if (!next) return;
+          this.debt = next;
+          this.draw();
+        };
+      });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class ApplyPaymentModal extends Modal {
-  constructor(app, debt, candidates, onSubmit, rules = [], categoryMeta = [], onReviewChange = null, transactions = null) {
+  constructor(app, debt, candidates, onSubmit, rules = [], categoryMeta = [], onReviewChange = null, transactions = null, ownership = null) {
     super(app);
     this.transactions = transactions;
+    this.ownership = ownership;
     this.debt = debt;
     this.candidates = candidates.slice();
     this.onSubmit = onSubmit;
@@ -11425,7 +11600,6 @@ class ApplyPaymentModal extends Modal {
           : "No unapplied payments found in those categories since this balance was set.",
         cls: "budget-muted"
       });
-      return;
     }
 
     const chosen = new Set();
@@ -11460,9 +11634,10 @@ class ApplyPaymentModal extends Modal {
 
     const list = contentEl.createDiv({ cls: "budget-apply-list" });
 
-    const renderRow = (t) => {
+    const renderRow = (t, startChecked = false) => {
       const row = list.createDiv({ cls: "budget-apply-row" });
       const cb = row.createEl("input", { type: "checkbox" });
+      if (startChecked) cb.checked = true;
       cb.onchange = () => {
         if (cb.checked) chosen.add(t.id);
         else chosen.delete(t.id);
@@ -11541,7 +11716,56 @@ class ApplyPaymentModal extends Modal {
       };
     };
 
-    this.candidates.slice(0, 40).forEach(renderRow);
+    this.candidates.slice(0, 40).forEach((t) => renderRow(t));
+
+    // Not everything that paid this debt is labelled, or labelled the way this
+    // list looks for. Search every outgoing transaction and add the one you
+    // mean; nothing here goes by its category or its amount.
+    if (this.transactions) {
+      const finder = contentEl.createEl("details", { cls: "budget-apply-find" });
+      finder.createEl("summary", { text: "Not listed? Search all transactions" });
+      const box = finder.createEl("input", { type: "text", cls: "budget-apply-search" });
+      box.setAttr("placeholder", "Merchant, category or amount");
+      const results = finder.createDiv({ cls: "budget-apply-results" });
+      const floor = d.balance_anchor && d.balance_anchor.date ? d.balance_anchor.date : null;
+      const appliedHere = new Set((d.applied_payments || []).map((p) => p && p.tx_id).filter(Boolean));
+      const drawResults = () => {
+        results.empty();
+        const listed = new Set(this.candidates.map((c) => c.id));
+        const found = searchDebits(this.transactions, { query: box.value, notBefore: floor, excludeIds: new Set([...appliedHere, ...listed]), rules: this.rules });
+        if (!found.length) {
+          results.createEl("p", { text: "Nothing matches.", cls: "budget-muted" });
+          return;
+        }
+        found.forEach((t) => {
+          const row = results.createDiv({ cls: "budget-apply-row" });
+          const label = row.createDiv({ cls: "budget-apply-label" });
+          label.createDiv({ text: displayMerchant(t.merchant_raw, this.rules) }).setAttr("title", t.merchant_raw || "");
+          const meta = label.createDiv({ cls: "budget-apply-meta" });
+          meta.createSpan({ text: t.date || "pending" });
+          meta.createSpan({ text: t.resolved_category || "Uncategorized" });
+          row.createSpan({ text: `$${Math.abs(t.amount).toFixed(2)}`, cls: "budget-amount" });
+          const settled = this.ownership ? this.ownership.settlementOf(t) : null;
+          if (settled) {
+            row.createSpan({ text: `counts toward ${settled.label || "something else"}`, cls: "budget-muted" });
+            return;
+          }
+          const add = row.createEl("button", { text: "Add", cls: "budget-btn" });
+          add.onclick = () => {
+            this.candidates.push(t);
+            chosen.add(t.id);
+            renderRow(t, true);
+            refreshTotal();
+            drawResults();
+          };
+        });
+      };
+      box.addEventListener("input", drawResults);
+      finder.addEventListener("toggle", () => {
+        if (finder.open) drawResults();
+      });
+      if (floor) finder.createEl("p", { text: `From ${formatShortDate(floor)} on. Earlier payments are already in the balance.`, cls: "budget-muted budget-apply-scope" });
+    }
 
     if (loan) {
       new Setting(contentEl)
@@ -12259,13 +12483,24 @@ class LinkContributionModal extends Modal {
 }
 
 class TargetTunerModal extends Modal {
-  constructor(app, categoryName, baseline, baselineMonthKey, currentTarget, onSubmit) {
+  constructor(app, categoryName, baseline, baselineMonthKey, currentTarget, onSubmit, onRemove = null) {
     super(app);
     this.categoryName = categoryName;
     this.baseline = baseline;
     this.baselineMonthKey = baselineMonthKey;
     this.currentTarget = currentTarget || 0;
     this.onSubmit = onSubmit;
+    this.onRemove = onRemove;
+  }
+  // Only a category that has a target has one to take away.
+  addRemoveLink() {
+    if (!(this.currentTarget > 0) || !this.onRemove) return;
+    const row = this.contentEl.createDiv({ cls: "budget-modal-btn-row" });
+    const link = row.createEl("button", { text: "Remove this target", cls: "budget-link-btn" });
+    link.onclick = () => {
+      this.close();
+      this.onRemove();
+    };
   }
   onOpen() {
     const { contentEl } = this;
@@ -12276,6 +12511,7 @@ class TargetTunerModal extends Modal {
         text: `No spending recorded for ${this.categoryName} in ${monthLabel(this.baselineMonthKey)}, so there's no baseline to cut from. Set a target by hand in Settings instead.`,
         cls: "budget-muted"
       });
+      this.addRemoveLink();
       return;
     }
 
@@ -12340,6 +12576,7 @@ class TargetTunerModal extends Modal {
           this.onSubmit(calcTarget(pct), pct);
         })
     );
+    this.addRemoveLink();
   }
   onClose() {
     this.contentEl.empty();
@@ -13102,6 +13339,8 @@ class LabelModal extends Modal {
     this.rules = context.rules || [];
     // Offered when the caller can file a transfer.
     this.onTransfer = context.onTransfer || null;
+    // Offered when the caller can delete the transaction.
+    this.onDelete = context.onDelete || null;
   }
   // Three things to decide — category, name, and whether it's this charge or
   // every one like it — so that's what's on screen. The pattern that decides
@@ -13221,6 +13460,14 @@ class LabelModal extends Modal {
       this.close();
       this.onSubmit({ mode: "rule", pattern: pattern.trim(), label, nickname: nickname.trim() });
     };
+    if (this.onDelete) {
+      const foot = contentEl.createDiv({ cls: "budget-label-foot" });
+      const del = foot.createEl("button", { text: "Delete this transaction\u2026", cls: "budget-link-btn" });
+      del.onclick = () => {
+        this.close();
+        this.onDelete();
+      };
+    }
   }
   onClose() {
     this.contentEl.empty();
@@ -15464,6 +15711,26 @@ class BudgetDashboardView extends ItemView {
     });
   }
 
+  // The payments applied to a debt, each one with a way to take it back.
+  openAppliedPayments(debt, kind, allTx, rules) {
+    new AppliedPaymentsModal(this.app, debt, allTx, rules, async (index) => {
+      const file = kind === "cc" ? FILES.revolvingDebts : FILES.installmentDebts;
+      const list = await readJSON(this.app, file, []);
+      const at = list.findIndex((d) => debtKey(d) === debtKey(debt));
+      if (at < 0) return null;
+      const r = undoAppliedPayment(list[at], index, kind);
+      if (!r.ok) return null;
+      await writeJSON(this.app, file, list);
+      new Notice(
+        `Took back the $${Math.abs(Number(r.entry.amount) || 0).toFixed(2)} payment.` + (r.restoredDue ? ` Next due ${r.restoredDue}.` : ""),
+        7000
+      );
+      await this.plugin.snapshotDebt();
+      await this.plugin.refreshAfterDataChange();
+      return list[at];
+    }).open();
+  }
+
   async renderDebts(container, ctx) {
     const { allTx, revolvingDebts, installmentDebts, allDebts, categoryMetaList } = ctx;
     const accounts = ctx.accounts || [];
@@ -15579,15 +15846,11 @@ class BudgetDashboardView extends ItemView {
             const list = await readJSON(this.app, file, []);
             const idx = list.findIndex((d) => debtKey(d) === debtKey(debt));
             if (idx < 0) return;
-            list[idx].applied_payments = (list[idx].applied_payments || []).concat(
-              picked.map((p) => Object.assign({ tx_id: p.id, amount: Math.abs(p.amount), date: p.date, applied_on: todayLocal() }, opts.extra ? { extra: true } : {}))
-            );
-
-            // Once an installment is covered, roll the due date forward. Without
+            // Once an installment is covered, the due date rolls forward. Without
             // this the Overview has to infer "is it still due?" from payment
             // dates, which disagrees with the Debts tab the moment a payment was
             // made outside the current pay period — e.g. prepaying before import.
-            const advanced = advanceDueDateIfCovered(list[idx], kind);
+            const advanced = applyPickedPayments(list[idx], picked, opts, kind);
 
             await writeJSON(this.app, file, list);
             const sum = picked.reduce((s, p) => s + Math.abs(p.amount), 0);
@@ -15603,7 +15866,7 @@ class BudgetDashboardView extends ItemView {
             // after a review decision so reopening Apply Payment cannot reuse a
             // stale list that still contains the transaction we just dismissed.
             await this.plugin.refreshAfterDataChange();
-          }, allTx).open();
+          }, allTx, ownership).open();
         };
 
         // Everything that changes the debt itself sits behind one Edit menu, so
@@ -15652,15 +15915,23 @@ class BudgetDashboardView extends ItemView {
           }, allTx).open();
         };
 
+        // Payments applied to this debt, each of which can be taken back.
+        const appliedEntry = (debt.applied_payments || []).length
+          ? [{ title: "Applied payments\u2026", run: () => this.openAppliedPayments(debt, kind, allTx, ctx.rules) }]
+          : [];
         const entries =
           kind === "loan"
             ? [
                 { title: "Edit loan", run: () => this.plugin.promptLoan(debt) },
-                { title: "Close loan\u2026", run: () => this.plugin.promptCloseLoan(debt), hint: "Sold, traded in, refinanced or paid off" }
+                ...appliedEntry,
+                { title: "Close loan\u2026", run: () => this.plugin.promptCloseLoan(debt), hint: "Sold, traded in, refinanced or paid off" },
+                { separator: true },
+                { title: "Delete\u2026", run: () => this.plugin.confirmDeleteLoan(debt), warn: true }
               ]
             : [
                 ...(kind === "bnpl" ? [{ title: "Edit plan", run: () => this.plugin.promptEditBNPL(debt) }] : []),
                 { title: kind === "bnpl" ? "Set balance" : "Edit balance", run: editBalance },
+                ...appliedEntry,
                 { separator: true },
                 { title: "Delete\u2026", run: deleteDebt, warn: true }
               ];
@@ -15702,7 +15973,8 @@ class BudgetDashboardView extends ItemView {
           const text = row.createDiv({ cls: "budget-debt-text-col" });
           text.createDiv({ text: debtLabel(rec), cls: "budget-debt-name" });
           text.createDiv({ text: closedLoanSummary(rec), cls: "budget-debt-meta" });
-          const btn = row.createDiv({ cls: "budget-debt-btn-col" }).createEl("button", { text: "Reopen", cls: "budget-btn" });
+          const btns = row.createDiv({ cls: "budget-debt-btn-col" });
+          const btn = btns.createEl("button", { text: "Reopen", cls: "budget-btn" });
           btn.setAttr("title", "Closed by mistake? Put it back as it was");
           btn.onclick = async () => {
             const back = await this.plugin.reopenLoan(rec.id);
@@ -15710,6 +15982,9 @@ class BudgetDashboardView extends ItemView {
             await this.plugin.snapshotDebt();
             await this.plugin.refreshAfterDataChange();
           };
+          const gone = btns.createEl("button", { text: "Delete", cls: "budget-btn budget-btn-danger" });
+          gone.setAttr("title", "Take this record out for good");
+          gone.onclick = () => this.plugin.confirmDeleteClosedLoan(rec);
         });
     }
 
@@ -16098,7 +16373,8 @@ class BudgetDashboardView extends ItemView {
           const cat = await this.plugin.markTransfer(t.id);
           if (cat) new Notice(`Filed as ${cat} and taken off the list. If its other half turns up, you'll be asked to confirm the pair.`, 7000);
           await this.plugin.refreshAfterDataChange();
-        }
+        },
+        onDelete: () => this.plugin.confirmDeleteTransaction(t)
       }
     ).open();
   }
@@ -16255,6 +16531,22 @@ class BudgetDashboardView extends ItemView {
         card.createDiv({
           text: `${a.stocks_pct}% stocks · ${a.bonds_pct}% bonds · ${a.short_term_other_pct}% short-term/other`,
           cls: "budget-muted"
+        });
+      }
+
+      // Every statement and typed-in balance saved for this account, each one
+      // removable: a wrong date or a bad import has no other way out.
+      const saved = snapshots
+        .filter((s) => s && s.account_id === account.id && s.statement_end)
+        .sort((a, b) => (a.statement_end < b.statement_end ? 1 : a.statement_end > b.statement_end ? -1 : 0));
+      if (saved.length) {
+        const list = this.collapsible(card, `pf-saved-${account.id}`, "Saved statements", `${saved.length}`, false);
+        saved.forEach((s) => {
+          const r1 = list.createDiv({ cls: "budget-fixed-row" });
+          r1.createSpan({ text: `${s.statement_end}${s.manual ? " \u00b7 typed in" : ""}`, cls: "budget-fixed-name" });
+          r1.createSpan({ text: Number.isFinite(s.ending_value) ? `$${round2(s.ending_value).toFixed(2)}` : "\u2014", cls: "budget-amount" });
+          const gone = r1.createEl("button", { text: "Remove", cls: "budget-btn budget-btn-danger" });
+          gone.onclick = () => this.plugin.confirmRemoveSavedBalance(account, s);
         });
       }
 
@@ -16460,6 +16752,11 @@ class BudgetDashboardView extends ItemView {
                   `${c.name} target set to $${newTarget.toFixed(2)}/mo` + (pct ? ` (-${pct}%).` : "."),
                   7000
                 );
+                this.render();
+              },
+              async () => {
+                await setCategoryTarget(this.app, c.name, 0);
+                new Notice(`${c.name} target removed.`);
                 this.render();
               }
             ).open();
@@ -17284,6 +17581,20 @@ class BudgetSettingTab extends PluginSettingTab {
         })
       );
 
+    if (this.plugin.settings.paySchedule) {
+      new Setting(containerEl)
+        .setName("Clear pay schedule")
+        .setDesc("Goes back to detecting it from your paychecks.")
+        .addButton((b) =>
+          b.setButtonText("Clear").onClick(async () => {
+            this.plugin.settings.paySchedule = null;
+            await writeJSON(this.app, FILES.settings, this.plugin.settings);
+            new Notice("Pay schedule cleared.");
+            this.plugin.refreshDashboard();
+            this.display();
+          })
+        );
+    }
   }
 
   // Checking and credit accounts.
@@ -18542,7 +18853,9 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
             `${label}: ${rows.invalid} transaction${rows.invalid === 1 ? "" : "s"} from SimpleFIN had no usable id, date or amount and ${rows.invalid === 1 ? "wasn't" : "weren't"} imported.`
           );
         }
-        const r = mergeSimpleFINTransactions(ledger, rows.transactions, startDate);
+        const live = withoutDeletedTransactions(rows.transactions, await readJSON(this.app, FILES.deletedTransactions, []));
+        const r = mergeSimpleFINTransactions(ledger, live.kept, startDate);
+        r.duplicates += live.dropped;
         ledger = r.merged;
         totals.added += r.added;
         totals.claimed += r.claimed;
@@ -19241,10 +19554,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
         const list = await readJSON(this.app, file, []);
         const idx = list.findIndex((d) => debtKey(d) === debtKey(debt));
         if (idx < 0) return;
-        list[idx].applied_payments = (list[idx].applied_payments || []).concat(
-          picked.map((p) => Object.assign({ tx_id: p.id, amount: Math.abs(p.amount), date: p.date, applied_on: todayLocal() }, opts.extra ? { extra: true } : {}))
-        );
-        const advanced = advanceDueDateIfCovered(list[idx], kind);
+        const advanced = applyPickedPayments(list[idx], picked, opts, kind);
         await writeJSON(this.app, file, list);
         const sum = picked.reduce((acc, p) => acc + Math.abs(p.amount), 0);
         new Notice(
@@ -19260,7 +19570,8 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       async () => {
         await this.refreshAfterDataChange();
       },
-      transactions
+      transactions,
+      ownership
     ).open();
   }
 
@@ -20259,6 +20570,84 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     return rec;
   }
 
+  // Who counts a transaction: the debts, bills and goals that point at it.
+  async linksForTransaction(txId) {
+    return transactionLinks(txId, {
+      installmentDebts: await readJSON(this.app, FILES.installmentDebts, []),
+      revolvingDebts: await readJSON(this.app, FILES.revolvingDebts, []),
+      fixedExpenses: await readJSON(this.app, FILES.fixedExpenses, []),
+      goals: await readJSON(this.app, FILES.savingsGoals, [])
+    });
+  }
+
+  // Deletes a transaction. Not while a debt, bill or goal counts it: take it off
+  // there first. A row from the bank is remembered, so the next import or sync
+  // doesn't bring it back.
+  async deleteTransaction(txId) {
+    const links = await this.linksForTransaction(txId);
+    if (links.length) return { ok: false, reason: `Counted toward ${[...new Set(links.map((l) => l.name))].join(", ")}. Undo that first.` };
+    const ledger = await readJSON(this.app, FILES.transactions, []);
+    const r = ledgerWithout(ledger, txId);
+    if (!r.ok) return { ok: false, reason: "Couldn't find that transaction." };
+    await writeJSON(this.app, FILES.transactions, r.transactions);
+    if (!r.removed.manual) {
+      const deleted = await readJSON(this.app, FILES.deletedTransactions, []);
+      deleted.push({ keys: transactionDeleteKeys(r.removed), deleted_on: todayLocal() });
+      await writeJSON(this.app, FILES.deletedTransactions, deleted);
+    }
+    return { ok: true, tx: r.removed };
+  }
+
+  async confirmDeleteTransaction(t) {
+    const links = await this.linksForTransaction(t.id);
+    if (links.length) {
+      new Notice(`Counted toward ${[...new Set(links.map((l) => l.name))].join(", ")}. Undo that first.`, 8000);
+      return;
+    }
+    new ConfirmModal(this.app, {
+      title: "Delete this transaction?",
+      body: [
+        `${t.merchant_raw || "(no description)"} \u00b7 ${t.date || "no date"} \u00b7 ${snapshotMoney(t.amount)}`,
+        t.manual ? "You added it by hand." : "A later import or sync will skip it."
+      ],
+      onConfirm: async () => {
+        const r = await this.deleteTransaction(t.id);
+        new Notice(r.ok ? "Transaction deleted." : r.reason, 7000);
+        await this.refreshAfterDataChange();
+      }
+    }).open();
+  }
+
+  // One saved statement or typed-in balance.
+  confirmRemoveSavedBalance(account, snap) {
+    new ConfirmModal(this.app, {
+      title: "Remove this balance?",
+      body: [`${account.label} \u00b7 ${snap.statement_end} \u00b7 $${round2(snap.ending_value || 0).toFixed(2)}`],
+      confirmText: "Remove",
+      onConfirm: async () => {
+        const list = await readJSON(this.app, FILES.portfolioSnapshots, []);
+        const r = removePortfolioSnapshot(list, account.id, snap.statement_end);
+        if (r.removed) await writeJSON(this.app, FILES.portfolioSnapshots, r.snapshots);
+        new Notice("Balance removed.");
+        this.refreshDashboard();
+      }
+    }).open();
+  }
+
+  // A closed-loan record, taken out for good. Its transactions stay put.
+  confirmDeleteClosedLoan(rec) {
+    new ConfirmModal(this.app, {
+      title: `Delete \u201c${debtLabel(rec)}\u201d?`,
+      body: ["Takes this record out of Closed loans for good. Its transactions stay put."],
+      onConfirm: async () => {
+        const closed = await readJSON(this.app, FILES.closedLoans, []);
+        await writeJSON(this.app, FILES.closedLoans, closed.filter((d) => !(d && d.id === rec.id)));
+        new Notice(`Deleted ${debtLabel(rec)}.`);
+        await this.refreshAfterDataChange();
+      }
+    }).open();
+  }
+
   confirmDeleteLoan(loan) {
     new ConfirmModal(this.app, {
       title: `Delete “${debtLabel(loan)}”?`,
@@ -20513,10 +20902,13 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
           // Anything SimpleFIN already brought in for this account (it was synced
           // before being unlinked) is already here under the feed's description,
           // which an exact-duplicate check would never recognise.
-          const synced = matchCSVToSimpleFIN(existing, newTx);
-          const reconciliation = reconcileImport(existing, synced.size ? newTx.filter((_, k) => !synced.has(k)) : newTx);
+          // Rows you deleted stay deleted.
+          const gone = withoutDeletedTransactions(newTx, await readJSON(this.app, FILES.deletedTransactions, []));
+          const incoming = gone.kept;
+          const synced = matchCSVToSimpleFIN(existing, incoming);
+          const reconciliation = reconcileImport(existing, synced.size ? incoming.filter((_, k) => !synced.has(k)) : incoming);
           const { merged, added, updated, unresolved } = reconciliation;
-          const skipped = reconciliation.skipped + synced.size;
+          const skipped = reconciliation.skipped + synced.size + gone.dropped;
           issues.push(...(reconciliation.issues || []));
           if (synced.size) {
             notes.push(
@@ -20525,7 +20917,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
             // Listed, so a skip that was wrong can be seen rather than assumed.
             const shown = [...synced.keys()].sort((a, b) => a - b);
             shown.slice(0, 20).forEach((k) => {
-              const t = newTx[k];
+              const t = incoming[k];
               notes.push(`Skipped as already synced: ${t.date} · ${t.merchant_raw} · $${Math.abs(t.amount).toFixed(2)}`);
             });
             if (shown.length > 20) notes.push(`…and ${shown.length - 20} more.`);
