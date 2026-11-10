@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.31.0 (unreleased)
+
+### Added
+- **Twice a month on any two days.** Pay on the 10th and 25th, or the 5th and
+  20th? Pick **Twice a month** in Settings → Pay schedule and enter your two
+  paydays. A day a short month doesn't have (the 30th in February) is that
+  month's last day. Detect reads your two days from your paychecks too. Anyone
+  already on twice a month keeps the 1st and 15th until they change it.
+
 ## 1.30.1
 
 ### Changed

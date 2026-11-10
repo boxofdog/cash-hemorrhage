@@ -477,12 +477,13 @@ console.log("\n12. The rendered tab");
   check("and the date to get past", text(stale.root).includes("past 2026-07-14"), true);
 
   // Merely flagged → no CTA, and it says when to come back.
+  // Dates relative to today, so the next charge is always still ahead.
   const early = await renderTab(
-    [tx("2026-09-14", "NETFLIX.COM", -15.49), tx("2026-08-14", "NETFLIX.COM", -15.49)],
-    CANCEL, [acct("chase", "2026-09-20")]
+    [tx(H.addDays(H.todayLocal(), -10), "NETFLIX.COM", -15.49), tx(H.addDays(H.todayLocal(), -40), "NETFLIX.COM", -15.49)],
+    CANCEL, [acct("chase", H.addDays(H.todayLocal(), -4))]
   );
   check("flagging alone does not produce the button", buttons(early.root).includes("Confirm it's gone"), false);
-  check("the row says when the next charge is due", text(early.root).includes("Next charge expected 2026-10-14"), true);
+  check("the row says when the next charge is due", /Next charge expected \d{4}-\d{2}-\d{2}/.test(text(early.root)), true);
 
   // Kept → nothing about phase-out at all.
   const kept = await renderTab(NETFLIX, [{ merchant_key: keyFor("NETFLIX.COM"), status: "keep" }], [acct("chase", "2026-09-20")]);

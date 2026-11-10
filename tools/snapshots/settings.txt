@@ -30,13 +30,13 @@
     <span .setting-name> Pay cadence
     <span .setting-option> Weekly
     <span .setting-option> Every 2 weeks
-    <span .setting-option> Twice a month (1st & 15th)
+    <span .setting-option> Twice a month
     <span .setting-option> Monthly
     <span .setting-value> semimonthly
   <div .setting-item>
-    <span .setting-name> A known payday
-    <span .setting-desc> Any past payday works as the anchor; everything else is counted from it.
-    <span .setting-value> 2026-09-15
+    <span .setting-name> Paydays each month
+    <span .setting-value> 1
+    <span .setting-value> 15
   <p .budget-apply-scope.budget-muted> Next paydays: 2026-10-01 · 2026-10-15 · 2026-11-01 · 2026-11-15
   <div .setting-item>
     <span .setting-name> Detect from my transactions

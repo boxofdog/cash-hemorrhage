@@ -98,7 +98,7 @@ const DEFAULT_SETTINGS = {
 const PAY_CADENCES = {
   weekly: { label: "Weekly", days: 7 },
   biweekly: { label: "Every 2 weeks", days: 14 },
-  semimonthly: { label: "Twice a month (1st & 15th)", days: null },
+  semimonthly: { label: "Twice a month", days: null },
   monthly: { label: "Monthly", days: null }
 };
 
@@ -6547,6 +6547,45 @@ async function carryCategoryOrder(app, oldName, newName) {
 
 // ---------- pay schedule ----------
 
+// A twice-a-month schedule's two paydays. A schedule saved before this was a
+// setting has none, and those were always the 1st and 15th.
+function semimonthlyDays(schedule) {
+  const raw = schedule && Array.isArray(schedule.days) ? schedule.days : [];
+  const days = [...new Set(raw.map(Number).filter((d) => Number.isInteger(d) && d >= 1 && d <= 31))].sort((a, b) => a - b);
+  return days.length === 2 ? days : [1, 15];
+}
+
+// Every payday of a twice-a-month schedule in the months around a date, oldest
+// first. A day a short month doesn't have is that month's last day, as a
+// monthly payday on the 31st is.
+function semimonthlyPaydaysAround(schedule, dateStr) {
+  const [y, m] = dateStr.split("-").map(Number);
+  const days = semimonthlyDays(schedule);
+  const out = [];
+  for (let off = -1; off <= 2; off++) {
+    const first = new Date(y, m - 1 + off, 1);
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    days.forEach((d) => out.push(toLocalISO(new Date(first.getFullYear(), first.getMonth(), Math.min(d, last)))));
+  }
+  return [...new Set(out)].sort();
+}
+
+function dayOrdinal(n) {
+  const v = n % 100;
+  return `${n}${["th", "st", "nd", "rd"][(v - 20) % 10] || ["th", "st", "nd", "rd"][v] || "th"}`;
+}
+
+// "every 2 weeks", or "twice a month (10th & 25th)" for a twice-a-month schedule.
+function payCadenceLabel(schedule) {
+  const spec = schedule && PAY_CADENCES[schedule.cadence];
+  if (!spec) return "";
+  if (schedule.cadence === "semimonthly") {
+    const [a, b] = semimonthlyDays(schedule);
+    return `twice a month (${dayOrdinal(a)} & ${dayOrdinal(b)})`;
+  }
+  return spec.label.toLowerCase();
+}
+
 // The next payday strictly after fromDateStr, derived from an anchor payday and
 // a cadence. Deterministic, so the date half of a pay period never needs typing.
 function nextPaydayFrom(schedule, fromDateStr) {
@@ -6581,12 +6620,7 @@ function nextPaydayFrom(schedule, fromDateStr) {
   }
 
   if (schedule.cadence === "semimonthly") {
-    const d = new Date(from);
-    for (let i = 0; i < 70; i++) {
-      d.setDate(d.getDate() + 1);
-      if (d.getDate() === 1 || d.getDate() === 15) return toLocalISO(d);
-    }
-    return null;
+    return semimonthlyPaydaysAround(schedule, fromDateStr).find((d) => d > fromDateStr) || null;
   }
 
   // monthly: same day-of-month as the anchor
@@ -6610,12 +6644,8 @@ function currentPeriodStart(schedule, onDateStr) {
   if (spec && spec.days) return addDays(next, -spec.days);
   const d = new Date(`${next}T00:00:00`);
   if (schedule.cadence === "semimonthly") {
-    d.setDate(d.getDate() - 1);
-    for (let i = 0; i < 40; i++) {
-      if (d.getDate() === 1 || d.getDate() === 15) return toLocalISO(d);
-      d.setDate(d.getDate() - 1);
-    }
-    return null;
+    const past = semimonthlyPaydaysAround(schedule, onDateStr).filter((x) => x <= onDateStr);
+    return past.length ? past[past.length - 1] : null;
   }
   d.setMonth(d.getMonth() - 1);
   return toLocalISO(d);
@@ -6630,7 +6660,7 @@ function resolvePaySchedule(settings, transactions) {
   const saved = settings && settings.paySchedule;
   if (saved && saved.cadence && saved.anchor_date) return saved;
   const detected = detectPaySchedule(transactions || []);
-  if (detected) return { cadence: detected.cadence, anchor_date: detected.anchor_date, inferred: true };
+  if (detected) return Object.assign({ cadence: detected.cadence, anchor_date: detected.anchor_date, inferred: true }, detected.days ? { days: detected.days } : {});
   return null;
 }
 
@@ -6650,6 +6680,7 @@ function detectPaySchedule(transactions) {
   const median = gaps[Math.floor(gaps.length / 2)];
 
   let cadence = null;
+  let days = null;
   if (median >= 6 && median <= 8) {
     cadence = "weekly";
   } else if (median >= 13 && median <= 18) {
@@ -6660,8 +6691,12 @@ function detectPaySchedule(transactions) {
     const allExactly14 = gaps.every((g) => g === 14);
     const daysOfMonth = new Set(pays.map((p) => Number(p.date.slice(8, 10))));
     if (allExactly14) cadence = "biweekly";
-    else if (daysOfMonth.size <= 2) cadence = "semimonthly";
-    else cadence = "biweekly";
+    else if (daysOfMonth.size <= 2) {
+      cadence = "semimonthly";
+      // The two days they keep landing on, so a 10th and 25th payday isn't
+      // read as the 1st and 15th.
+      if (daysOfMonth.size === 2) days = [...daysOfMonth].sort((a, b) => a - b);
+    } else cadence = "biweekly";
   } else if (median >= 26 && median <= 34) {
     cadence = "monthly";
   }
@@ -6671,7 +6706,8 @@ function detectPaySchedule(transactions) {
     cadence,
     anchor_date: pays[pays.length - 1].date,
     sampleSize: pays.length,
-    medianGap: median
+    medianGap: median,
+    days
   };
 }
 
@@ -17130,14 +17166,53 @@ class BudgetSettingTab extends PluginSettingTab {
         d.onChange(async (v) => {
           this.plugin.settings.paySchedule = Object.assign({}, this.plugin.settings.paySchedule, {
             cadence: v,
-            anchor_date: (this.plugin.settings.paySchedule || {}).anchor_date || ""
+            // Twice a month runs off its two paydays, so any date will do as
+            // the anchor; the rest are counted from the days themselves.
+            anchor_date: (this.plugin.settings.paySchedule || {}).anchor_date || (v === "semimonthly" ? todayLocal() : "")
           });
           await writeJSON(this.app, FILES.settings, this.plugin.settings);
           this.display();
         });
       });
 
-    new Setting(containerEl)
+    if (sched.cadence === "semimonthly") {
+      // Not always the 1st and 15th: pay on the 10th and 25th counts from those.
+      const [first, second] = semimonthlyDays(sched);
+      const typed = { a: String(first), b: String(second) };
+      const save = async () => {
+        const a = Number(typed.a);
+        const b = Number(typed.b);
+        const ok = (n) => Number.isInteger(n) && n >= 1 && n <= 31;
+        if (!ok(a) || !ok(b)) {
+          new Notice("Enter two days from 1 to 31.", 6000);
+          return;
+        }
+        if (a === b) {
+          new Notice("Enter two different days.", 6000);
+          return;
+        }
+        this.plugin.settings.paySchedule = Object.assign({}, this.plugin.settings.paySchedule, {
+          cadence: "semimonthly",
+          anchor_date: (this.plugin.settings.paySchedule || {}).anchor_date || todayLocal(),
+          days: [a, b].sort((x, y) => x - y)
+        });
+        await writeJSON(this.app, FILES.settings, this.plugin.settings);
+        new Notice(`Pay schedule saved: ${payCadenceLabel(this.plugin.settings.paySchedule)}.`);
+        this.plugin.refreshDashboard();
+        this.display();
+      };
+      const daysRow = new Setting(containerEl).setName("Paydays each month");
+      [["a", first], ["b", second]].forEach(([key, value]) =>
+        daysRow.addText((t) => {
+          t.inputEl.type = "number";
+          t.inputEl.min = "1";
+          t.inputEl.max = "31";
+          t.setValue(String(value));
+          t.onChange((v) => (typed[key] = v.trim()));
+          t.inputEl.addEventListener("change", save);
+        })
+      );
+    } else new Setting(containerEl)
       .setName("A known payday")
       .setDesc("Any past payday works as the anchor; everything else is counted from it.")
       .addText((t) => {
@@ -17158,7 +17233,7 @@ class BudgetSettingTab extends PluginSettingTab {
             new Notice(`"${raw}" isn't a valid date.`, 7000);
             return;
           }
-          this.plugin.settings.paySchedule = { cadence: sched.cadence || "biweekly", anchor_date: norm };
+          this.plugin.settings.paySchedule = Object.assign({}, this.plugin.settings.paySchedule, { cadence: sched.cadence || "biweekly", anchor_date: norm });
           await writeJSON(this.app, FILES.settings, this.plugin.settings);
           new Notice(`Pay schedule saved: ${PAY_CADENCES[sched.cadence || "biweekly"].label.toLowerCase()} from ${norm}.`);
           this.plugin.refreshDashboard();
@@ -17199,10 +17274,10 @@ class BudgetSettingTab extends PluginSettingTab {
             );
             return;
           }
-          this.plugin.settings.paySchedule = { cadence: found.cadence, anchor_date: found.anchor_date };
+          this.plugin.settings.paySchedule = Object.assign({ cadence: found.cadence, anchor_date: found.anchor_date }, found.days ? { days: found.days } : {});
           await writeJSON(this.app, FILES.settings, this.plugin.settings);
           new Notice(
-            `Detected ${PAY_CADENCES[found.cadence].label.toLowerCase()} pay (median ${found.medianGap} days across ${found.sampleSize} deposits), anchored to ${found.anchor_date}.`,
+            `Detected ${payCadenceLabel(this.plugin.settings.paySchedule)} pay (median ${found.medianGap} days across ${found.sampleSize} deposits), anchored to ${found.anchor_date}.`,
             9000
           );
           this.display();
@@ -19203,7 +19278,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       recentDeposits: paycheckDepositCandidates(txs, accounts, { schedule, todayStr: today }),
       rules,
       scheduledNextPayday: schedule ? nextPaydayFrom(schedule, today) : null,
-      scheduleLabel: cadence ? `${cadence.label.toLowerCase()}${schedule.inferred ? ", detected from your paychecks" : ""}` : ""
+      scheduleLabel: cadence ? `${payCadenceLabel(schedule)}${schedule.inferred ? ", detected from your paychecks" : ""}` : ""
     };
 
     new PaycheckModal(
