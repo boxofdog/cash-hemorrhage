@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.31.0 (unreleased)
+## 1.31.0
 
 ### Added
 - **A Transactions screen you can go back through.** It opens on **Recent**, as
