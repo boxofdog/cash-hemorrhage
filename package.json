@@ -11,7 +11,8 @@
     "mutate:loans": "python3 tools/mutate.py tools/mutations/loans.py",
     "mutate:duplicates": "python3 tools/mutate.py tools/mutations/manual-duplicates.py",
     "mutate:paydays": "python3 tools/mutate.py tools/mutations/pay-days.py",
-    "mutate:deletes": "python3 tools/mutate.py tools/mutations/deletes.py"
+    "mutate:deletes": "python3 tools/mutate.py tools/mutations/deletes.py",
+    "mutate:txlist": "python3 tools/mutate.py tools/mutations/tx-list.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",

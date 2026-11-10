@@ -246,6 +246,7 @@ async function renderTab(plugin, tab, opts = {}) {
     debts: await renderTab(debt, "debts", { open: true }),
     insights: await renderTab(debt, "insights", { open: true }),
     transactions: await renderTab(debt, "transactions", { open: true }),
+    transactionsAll: await renderTab(debt, "transactions", { open: true, state: { txMode: "all", txDays: 30, txHideTransfers: true } }),
     subscriptions: await renderTab(debt, "subscriptions", { open: true })
   };
 
@@ -265,7 +266,8 @@ async function renderTab(plugin, tab, opts = {}) {
     { name: "3-debts", view: "debts", from: [".budget-tabs", ".budget-tabs"], off: [-12, -12], h: { d: 1000, m: 844 } },
     { name: "4-insights", view: "insights", from: [".budget-tabs", ".budget-tabs"], off: [-12, -12], h: { d: 1000, m: 844 } },
     { name: "5-spending", view: "overview", from: [".budget-pie-card", ".budget-pie-card"], off: [-14, -14], h: { d: 900, m: 844 } },
-    { name: "extra-transactions", view: "transactions", from: [".budget-tabs", ".budget-tabs"], off: [-12, -12], h: { d: 1000, m: 844 } }
+    { name: "extra-transactions", view: "transactions", from: [".budget-tabs", ".budget-tabs"], off: [-12, -12], h: { d: 1000, m: 844 } },
+    { name: "extra-transactions-all", view: "transactionsAll", from: [".budget-tabs", ".budget-tabs"], off: [-12, -12], h: { d: 1000, m: 844 } }
   ];
   for (const s of shots) {
     for (const [kind, w, mobile, scale, i] of [["desktop", 1200, false, 2, 0], ["mobile", 390, true, 3, 1]]) {

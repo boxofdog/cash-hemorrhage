@@ -3,6 +3,17 @@
 ## 1.31.0 (unreleased)
 
 ### Added
+- **A Transactions screen you can go back through.** It opens on **Recent**, as
+  before. **All transactions** starts with the last two weeks and **Show
+  older** goes back a step at a time: a month, two, three, six, a year,
+  everything. **Money in** shows only money coming in, and **Hide transfers**
+  leaves out money moved between your own accounts and anything filed as a
+  transfer. Both work in either list.
+- **Take back what you dismissed.** Settings → **Dismissed suggestions** lists
+  every "Not a transfer", "Not the same" and "Not a payment" you've answered, with
+  **Bring back** on each so it can be suggested again.
+- **Remove a bad point from the debt chart.** The Debts tab has **Saved
+  points** under the chart, with **Remove** on every day but today's.
 - **Delete a transaction.** In the **Change** window, **Delete this
   transaction…** at the bottom. A row the bank sent is remembered, so the next
   import or sync doesn't bring it back; one you typed in just goes. A

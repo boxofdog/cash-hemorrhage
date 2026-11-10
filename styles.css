@@ -3578,3 +3578,29 @@ input.budget-apply-search { width: 100%; margin: 0.5em 0; }
 
 /* A quiet delete link at the foot of the Change window. */
 .budget-label-foot { margin-top: 0.8em; text-align: center; }
+
+/* Transactions: the list switch, Manual Add, and the filters under them. */
+.budget-tx-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+.budget-tx-filters { margin-bottom: 0.6em; }
+button.budget-filter-chip.budget-filter-chip {
+  border-radius: 999px;
+  font-size: 0.86em;
+  padding: 0.25em 0.9em;
+}
+button.budget-filter-chip.budget-filter-chip-on {
+  background: var(--interactive-accent, var(--text-accent, #7b6cd9));
+  color: var(--text-on-accent, #fff);
+}
+.budget-tx-range { align-items: center; }
+
+/* Saved debt-chart points scroll instead of running the card down the page. */
+.budget-debt-points { max-height: 14em; overflow-y: auto; }
+
+/* Tighter segments here so the switch and Manual Add share a row on a phone. */
+.budget-tx-bar .budget-segmented .budget-segment { padding: 0.35em 0.8em; }

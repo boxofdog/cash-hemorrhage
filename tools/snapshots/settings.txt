@@ -197,3 +197,7 @@
           <div .budget-rule-btn-col>
             <button .budget-btn> Edit
             <button .budget-btn.budget-btn-danger> Delete
+  <div .setting-item>
+    <span .setting-name> Dismissed suggestions
+    <span .setting-desc> None.
+    <span .setting-btn> Review

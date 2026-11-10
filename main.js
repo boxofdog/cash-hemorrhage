@@ -3453,6 +3453,72 @@ function notTransferTogether(a, b) {
   return (a.not_transfer_with || []).includes(b.id) || (b.not_transfer_with || []).includes(a.id);
 }
 
+// How far back "All transactions" goes, one step at a time. The last step is
+// everything.
+const TX_RANGE_STEPS = [14, 30, 60, 90, 180, 365];
+const TX_ALL_DAYS = 36500;
+const TX_ROW_CAP = 250;
+
+function nextTxRange(days) {
+  const next = TX_RANGE_STEPS.find((d) => d > days);
+  return next || TX_ALL_DAYS;
+}
+
+// The rows the Transactions list shows, and what it says about the rest.
+//
+//   mode "recent": the newest `limit` rows.
+//   mode "all":    everything within `days` of today, newest first.
+//   moneyIn:       only money coming in.
+//   hideTransfers: no transfers at all: confirmed pairs, and anything filed
+//                  under a transfer category.
+//
+// Without hideTransfers, confirmed pairs between your own accounts stay off the
+// list unless showPairs asks for them, and `hiddenPairs` says how many.
+function transactionListView(
+  allTx,
+  { mode = "recent", days = 14, moneyIn = false, hideTransfers = false, showPairs = false, limit = 15, categoryMeta = [], todayStr = todayLocal() } = {}
+) {
+  const rowsAll = (allTx || []).filter(Boolean);
+  const byId = new Map(rowsAll.filter((t) => t.id).map((t) => [t.id, t]));
+  const transferCats = new Set((categoryMeta || []).filter((c) => c && c.is_transfer).map((c) => c.name));
+  const isPair = (t) => isHiddenTransfer(t, byId);
+  const isTransfer = (t) => isPair(t) || transferCats.has(t.resolved_category);
+  // A bank hold with no date yet is as new as anything.
+  const dateOf = (t) => t.date || "9999-12-31";
+  let rows = rowsAll.slice().sort((a, b) => (dateOf(a) < dateOf(b) ? 1 : dateOf(a) > dateOf(b) ? -1 : 0));
+  if (moneyIn) rows = rows.filter((t) => t.amount > 0);
+
+  const cutoff = mode === "all" ? addDays(todayStr, -days) : null;
+  const inRange = (t) => !cutoff || !t.date || t.date >= cutoff;
+  const visible = (t) => (hideTransfers ? !isTransfer(t) : showPairs || !isPair(t));
+
+  const within = rows.filter(inRange);
+  let shown = within.filter(visible);
+  let hiddenPairs = 0;
+  if (!hideTransfers) {
+    if (mode === "recent") {
+      // The hidden ones that would have been on this list: all of them when it
+      // isn't full, otherwise those as new as the oldest row it shows.
+      const notPairs = rows.filter((t) => !isPair(t));
+      const oldest = notPairs.length >= limit ? notPairs[limit - 1].date : null;
+      const base = showPairs ? rows : notPairs;
+      shown = base.slice(0, limit);
+      hiddenPairs = rows.filter((t) => isPair(t) && (!oldest || t.date >= oldest)).length;
+    } else {
+      hiddenPairs = within.filter(isPair).length;
+    }
+  } else if (mode === "recent") {
+    shown = rows.filter(visible).slice(0, limit);
+  }
+  let capped = 0;
+  if (mode === "all" && shown.length > TX_ROW_CAP) {
+    capped = shown.length - TX_ROW_CAP;
+    shown = shown.slice(0, TX_ROW_CAP);
+  }
+  const hasOlder = !!cutoff && rows.filter((t) => t.date && t.date < cutoff && visible(t)).length > 0;
+  return { rows: shown, hiddenPairs, hasOlder, cutoff, capped };
+}
+
 // Pairs worth asking about, newest first. Each row is offered in one pair at
 // most: nearest dates first, then a pair whose descriptions both read like a
 // transfer ("To Savings 01", "Online Transfer from CHK"). `likely` marks those;
@@ -3594,6 +3660,64 @@ function undoAppliedPayment(record, index, kind) {
     }
   }
   return { ok: true, restoredDue, entry };
+}
+
+// Things you told it to stop suggesting: two rows that aren't a transfer, two
+// that aren't the same purchase, and rows kept out of a debt's payment list.
+function dismissedSuggestions(transactions) {
+  const rows = (transactions || []).filter((t) => t && t.id);
+  const byId = new Map(rows.map((t) => [t.id, t]));
+  const items = [];
+  const pairs = (field, kind) => {
+    const seen = new Set();
+    rows.forEach((t) => {
+      (t[field] || []).forEach((otherId) => {
+        const other = byId.get(otherId);
+        if (!other) return;
+        const key = [t.id, otherId].sort().join("|");
+        if (seen.has(key)) return;
+        seen.add(key);
+        items.push({ kind, key: `${kind}:${key}`, ids: [t.id, otherId], rows: [t, other] });
+      });
+    });
+  };
+  pairs("not_transfer_with", "transfer");
+  pairs("not_duplicate_with", "duplicate");
+  rows.forEach((t) => {
+    if (t.excluded_from_debt_payments) items.push({ kind: "payment", key: `payment:${t.id}`, ids: [t.id], rows: [t], why: "not a payment" });
+    else if (t.debt_payment_review_status === "already_applied") items.push({ kind: "payment", key: `payment:${t.id}`, ids: [t.id], rows: [t], why: "already applied" });
+  });
+  return items;
+}
+
+// The ledger with one dismissal taken back, so it can be suggested again.
+function bringBackDismissed(transactions, item) {
+  const ids = new Set(item.ids);
+  return (transactions || []).map((t) => {
+    if (!t || !ids.has(t.id)) return t;
+    const copy = Object.assign({}, t);
+    if (item.kind === "transfer") {
+      copy.not_transfer_with = (copy.not_transfer_with || []).filter((x) => !ids.has(x));
+      if (!copy.not_transfer_with.length) delete copy.not_transfer_with;
+    } else if (item.kind === "duplicate") {
+      copy.not_duplicate_with = (copy.not_duplicate_with || []).filter((x) => !ids.has(x));
+      if (!copy.not_duplicate_with.length) delete copy.not_duplicate_with;
+    } else if (item.kind === "payment") {
+      delete copy.excluded_from_debt_payments;
+      if (copy.debt_payment_review_status === "already_applied") {
+        delete copy.debt_payment_review_status;
+        delete copy.debt_payment_debt_key;
+        delete copy.debt_payment_reviewed_at;
+      }
+    }
+    return copy;
+  });
+}
+
+// A debt-history point, gone. One per day.
+function removeDebtHistoryPoint(history, date) {
+  const kept = (history || []).filter((h) => !(h && h.date === date));
+  return { history: kept, removed: (history || []).length - kept.length };
 }
 
 // A saved balance or statement, gone. One per account per statement end.
@@ -11510,6 +11634,61 @@ class EditBalanceModal extends Modal {
   }
 }
 
+// Everything you've told it to stop suggesting, each with a way to bring it back.
+class DismissedModal extends Modal {
+  constructor(app, items, rules, onBringBack) {
+    super(app);
+    this.items = items;
+    this.rules = rules || [];
+    this.onBringBack = onBringBack;
+  }
+  onOpen() {
+    this.draw();
+  }
+  draw() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Dismissed suggestions" });
+    if (!this.items.length) {
+      contentEl.createEl("p", { text: "Nothing dismissed.", cls: "budget-muted" });
+      return;
+    }
+    const money = (t) => (t.amount > 0 ? `+$${t.amount.toFixed(2)}` : `-$${Math.abs(t.amount).toFixed(2)}`);
+    const name = (t) => displayMerchant(t.merchant_raw, this.rules);
+    const groups = [
+      ["transfer", "Not transfers"],
+      ["duplicate", "Not duplicates"],
+      ["payment", "Kept out of debt payments"]
+    ];
+    groups.forEach(([kind, title]) => {
+      const mine = this.items.filter((i) => i.kind === kind);
+      if (!mine.length) return;
+      contentEl.createEl("h4", { text: title });
+      mine.forEach((item) => {
+        const row = contentEl.createDiv({ cls: "budget-apply-row" });
+        const label = row.createDiv({ cls: "budget-apply-label" });
+        item.rows.forEach((t) => {
+          label.createDiv({ text: `${name(t)} \u00b7 ${money(t)}` });
+        });
+        const meta = label.createDiv({ cls: "budget-apply-meta" });
+        meta.createSpan({ text: item.rows.map((t) => t.date || "pending").join(" \u00b7 ") });
+        if (item.why) meta.createSpan({ text: item.why, cls: "budget-badge budget-badge-empty" });
+        const back = row.createEl("button", { text: "Bring back", cls: "budget-btn" });
+        back.setAttr("title", "Let it be suggested again");
+        back.onclick = async () => {
+          const next = await this.onBringBack(item);
+          if (!next) return;
+          this.items = next;
+          this.draw();
+        };
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 // What's been applied to one debt, newest first, each with Undo.
 class AppliedPaymentsModal extends Modal {
   constructor(app, debt, transactions, rules, onUndo) {
@@ -16051,6 +16230,24 @@ class BudgetDashboardView extends ItemView {
           cls: "budget-muted"
         });
       }
+
+      // Every saved point, so a bad one can go. Today's comes back whenever the
+      // numbers are recalculated, so it isn't offered.
+      const todayStr = todayLocal();
+      const pointsBox = this.collapsible(progressCard, "debt-points", "Saved points", String(history.length), false);
+      const scroll = pointsBox.createDiv({ cls: "budget-debt-points" });
+      history
+        .slice()
+        .reverse()
+        .forEach((h) => {
+          const r1 = scroll.createDiv({ cls: "budget-fixed-row" });
+          r1.createSpan({ text: h.date === todayStr ? `${h.date} \u00b7 today` : h.date, cls: "budget-fixed-name" });
+          r1.createSpan({ text: `$${round2(h.total_debt).toFixed(2)}`, cls: "budget-amount" });
+          if (h.date !== todayStr) {
+            const gone = r1.createEl("button", { text: "Remove", cls: "budget-btn budget-btn-danger" });
+            gone.onclick = () => this.plugin.confirmRemoveDebtPoint(h);
+          }
+        });
     }
 
   }
@@ -16275,28 +16472,64 @@ class BudgetDashboardView extends ItemView {
   renderRecentTransactions(container, ctx) {
     const { allTx, rules } = ctx;
     const recentOuter = container.createDiv({ cls: "budget-card budget-recent-card" });
-    // Confirmed transfers between your own accounts are kept off the list;
-    // Show brings them back, each with a way to undo it.
     const txById = new Map(allTx.filter((t) => t && t.id).map((t) => [t.id, t]));
-    const newestFirst = [...allTx].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-    const limit = isMobileApp() ? 8 : 15;
-    const visible = newestFirst.filter((t) => !isHiddenTransfer(t, txById));
-    const recent = (this.showTransfers ? newestFirst : visible).slice(0, limit);
-    // The hidden ones that would have been on this list: all of them when it
-    // isn't full, otherwise those as new as the oldest row it shows.
-    const oldestVisible = visible.length >= limit ? visible[limit - 1].date : null;
-    const hiddenHere = newestFirst.filter((t) => isHiddenTransfer(t, txById) && (!oldestVisible || t.date >= oldestVisible)).length;
+    const mode = this.txMode === "all" ? "all" : "recent";
+    const days = this.txDays || TX_RANGE_STEPS[0];
+    const view = transactionListView(allTx, {
+      mode,
+      days,
+      moneyIn: !!this.txMoneyIn,
+      hideTransfers: !!this.txHideTransfers,
+      showPairs: !!this.showTransfers,
+      limit: isMobileApp() ? 8 : 15,
+      categoryMeta: ctx.categoryMetaList || []
+    });
+    const recent = view.rows;
+    const hiddenHere = view.hiddenPairs;
     const recentCard = this.collapsible(
       recentOuter,
       "recent-tx",
-      "Recent transactions",
+      mode === "all" ? "All transactions" : "Recent transactions",
       `${recent.length} shown`,
       true
     );
-    const addTx = recentCard.createDiv({ cls: "budget-goal-btns budget-add-tx" }).createEl("button", { text: "Manual Add", cls: "budget-btn" });
+
+    // Which list, and how it's filtered. Recent is the default; All starts with
+    // the last couple of weeks and goes back a step at a time.
+    const bar = recentCard.createDiv({ cls: "budget-goal-btns budget-add-tx budget-tx-bar" });
+    const toggle = bar.createDiv({ cls: "budget-segmented" });
+    [["recent", "Recent"], ["all", "All transactions"]].forEach(([key, label]) => {
+      const b = toggle.createEl("button", { text: label, cls: `budget-segment${mode === key ? " budget-segment-on" : ""}` });
+      b.onclick = () => {
+        if (mode === key) return;
+        this.txMode = key;
+        this.txDays = TX_RANGE_STEPS[0];
+        this.render();
+      };
+    });
+    const addTx = bar.createEl("button", { text: "Manual Add", cls: "budget-btn" });
     addTx.onclick = () => this.plugin.promptAddTransaction();
-    if (recent.length === 0 && !hiddenHere) {
+    const chips = recentCard.createDiv({ cls: "budget-goal-btns budget-tx-filters" });
+    [
+      ["txMoneyIn", "Money in", "Only money coming in"],
+      ["txHideTransfers", "Hide transfers", "Leave out money moved between your own accounts, and anything filed as a transfer"]
+    ].forEach(([key, label, tip]) => {
+      const on = !!this[key];
+      const chip = chips.createEl("button", { text: label, cls: `budget-btn budget-filter-chip${on ? " budget-filter-chip-on" : ""}` });
+      chip.setAttr("aria-pressed", on ? "true" : "false");
+      chip.setAttr("title", tip);
+      chip.onclick = () => {
+        this[key] = !on;
+        this.render();
+      };
+    });
+
+    if (allTx.length === 0) {
       recentCard.createEl("p", { text: "Nothing yet.", cls: "budget-muted" });
+      return;
+    }
+    if (recent.length === 0 && !hiddenHere && !view.hasOlder) {
+      recentCard.createEl("p", { text: this.txMoneyIn || this.txHideTransfers ? "Nothing matches." : "Nothing yet.", cls: "budget-muted" });
       return;
     }
     const allLabels = [...new Set(rules.map((r) => r.home_label).concat(allTx.map((t) => t.resolved_category).filter(Boolean)))]
@@ -16308,7 +16541,7 @@ class BudgetDashboardView extends ItemView {
       const main = row.createDiv({ cls: "budget-recent-main" });
       const nameEl = main.createSpan({ text: displayMerchant(t.merchant_raw, rules), cls: "budget-recent-name" });
       nameEl.setAttr("title", t.merchant_raw);
-      main.createSpan({ text: t.date, cls: "budget-recent-date" });
+      main.createSpan({ text: t.date || "pending", cls: "budget-recent-date" });
 
       const meta = row.createDiv({ cls: "budget-recent-meta" });
       const cat = t.resolved_category || "Uncategorized";
@@ -16338,6 +16571,28 @@ class BudgetDashboardView extends ItemView {
       const changeBtn = meta.createEl("button", { text: "Change", cls: "budget-btn" });
       changeBtn.onclick = () => this.openLabelModal(t, allLabels, ctx);
     });
+
+    if (mode === "all") {
+      const foot = recentCard.createDiv({ cls: "budget-recent-hidden budget-tx-range" });
+      if (view.capped) {
+        recentCard.createEl("p", {
+          text: `${view.capped} more in this range. A shorter range, or a filter, narrows it.`,
+          cls: "budget-muted"
+        });
+      }
+      foot.createSpan({
+        text: view.hasOlder ? `Since ${formatShortDate(view.cutoff)}.` : "That's everything.",
+        cls: "budget-muted"
+      });
+      if (view.hasOlder) {
+        const older = foot.createEl("button", { text: "Show older", cls: "budget-basis-btn" });
+        older.onclick = () => {
+          this.txDays = nextTxRange(days);
+          this.render();
+        };
+      }
+    }
+
     if (hiddenHere) {
       const foot = recentCard.createDiv({ cls: "budget-recent-hidden" });
       foot.createSpan({
@@ -16346,8 +16601,8 @@ class BudgetDashboardView extends ItemView {
           : `${hiddenHere} transfer${hiddenHere === 1 ? "" : "s"} between your accounts hidden.`,
         cls: "budget-muted"
       });
-      const toggle = foot.createEl("button", { text: this.showTransfers ? "Hide" : "Show", cls: "budget-basis-btn" });
-      toggle.onclick = () => {
+      const showBtn = foot.createEl("button", { text: this.showTransfers ? "Hide" : "Show", cls: "budget-basis-btn" });
+      showBtn.onclick = () => {
         this.showTransfers = !this.showTransfers;
         this.render();
       };
@@ -17253,6 +17508,7 @@ class BudgetSettingTab extends PluginSettingTab {
     await this.renderGoalSettings(containerEl);
     await this.renderCategorySettings(containerEl);
     await this.renderRuleSettings(containerEl);
+    await this.renderDismissedSettings(containerEl);
   }
 
   // First-time setup: one button that lays out every folder and data file. It
@@ -18321,6 +18577,16 @@ class BudgetSettingTab extends PluginSettingTab {
   }
 
   // Merchant patterns that assign categories on import.
+  // Suggestions you've said no to, with a way to take it back.
+  async renderDismissedSettings(containerEl) {
+    const ledger = await readJSON(this.app, FILES.transactions, []);
+    const n = dismissedSuggestions(ledger).length;
+    new Setting(containerEl)
+      .setName("Dismissed suggestions")
+      .setDesc(n ? `${n} you said no to.` : "None.")
+      .addButton((b) => b.setButtonText("Review").onClick(() => this.plugin.openDismissed()));
+  }
+
   async renderRuleSettings(containerEl) {
     containerEl = this.section(containerEl, "rules", "Category rules", this.countLabel((await readJSON(this.app, FILES.rules, [])).length, "rule"));
     containerEl.createEl("p", {
@@ -20613,6 +20879,36 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       onConfirm: async () => {
         const r = await this.deleteTransaction(t.id);
         new Notice(r.ok ? "Transaction deleted." : r.reason, 7000);
+        await this.refreshAfterDataChange();
+      }
+    }).open();
+  }
+
+  // Opens the list of dismissed suggestions.
+  async openDismissed() {
+    const rules = await readJSON(this.app, FILES.rules, []);
+    const ledger = await readJSON(this.app, FILES.transactions, []);
+    new DismissedModal(this.app, dismissedSuggestions(ledger), rules, async (item) => {
+      const fresh = await readJSON(this.app, FILES.transactions, []);
+      const next = bringBackDismissed(fresh, item);
+      await writeJSON(this.app, FILES.transactions, next);
+      new Notice("It can be suggested again.");
+      await this.refreshAfterDataChange();
+      return dismissedSuggestions(next);
+    }).open();
+  }
+
+  // One day's point on the debt chart.
+  confirmRemoveDebtPoint(point) {
+    new ConfirmModal(this.app, {
+      title: "Remove this point?",
+      body: [`${point.date} \u00b7 $${round2(point.total_debt).toFixed(2)}`, "The chart redraws without it."],
+      confirmText: "Remove",
+      onConfirm: async () => {
+        const history = await readJSON(this.app, FILES.debtHistory, []);
+        const r = removeDebtHistoryPoint(history, point.date);
+        if (r.removed) await writeJSON(this.app, FILES.debtHistory, r.history);
+        new Notice("Point removed.");
         await this.refreshAfterDataChange();
       }
     }).open();

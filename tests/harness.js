@@ -30,7 +30,7 @@ const EXPORTS = [
 // of main.js for differential tests, and a hard reference to something added
 // later would make the old module fail to compile rather than simply lack it.
 const OPTIONAL_EXPORTS = [
-  "semimonthlyDays", "transactionDeleteKeys", "withoutDeletedTransactions", "transactionLinks", "ledgerWithout", "applyPickedPayments", "undoAppliedPayment", "removePortfolioSnapshot", "searchDebits", "AppliedPaymentsModal", "semimonthlyPaydaysAround", "payCadenceLabel", "detectPaySchedule", "dayOrdinal", "goalPace",
+  "semimonthlyDays", "transactionListView", "nextTxRange", "TX_RANGE_STEPS", "dismissedSuggestions", "bringBackDismissed", "removeDebtHistoryPoint", "DismissedModal", "transactionDeleteKeys", "withoutDeletedTransactions", "transactionLinks", "ledgerWithout", "applyPickedPayments", "undoAppliedPayment", "removePortfolioSnapshot", "searchDebits", "AppliedPaymentsModal", "semimonthlyPaydaysAround", "payCadenceLabel", "detectPaySchedule", "dayOrdinal", "goalPace",
   "setCategoryKind", "categoryKindOf", "CategorySettingsModal",
   "setSvgContent",
   "subscriptionPhaseOut", "nextRenewalDate", "inferCadenceKey", "patchSubscriptionReview", "setSubscriptionStatus",
