@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.31.1 (unreleased)
+
+### Fixed
+- **A payment you made before setting up a debt can now be applied.** Set up a
+  debt after paying it and the payment used to be stuck: not offered, and the
+  debt kept showing as due. Apply payment's search now lists payments from
+  before the balance was typed, marked "already in the balance". Applying one
+  counts it toward the installment it paid and leaves the balance as you typed
+  it. Plans no longer take an earlier payment off the balance a second time.
+- **Apply from the Overview.** An unpaid debt in **Due this pay period** has an
+  **Apply** button, so you can say which payment it was from where you see it.
+  With nothing suggested, the search opens on its own.
+
 ## 1.31.0
 
 ### Added

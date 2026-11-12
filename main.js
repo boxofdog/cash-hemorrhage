@@ -4685,7 +4685,13 @@ function debtBalance(debt, transactions = null) {
   if (isLoan(debt)) return loanState(debt).balance;
   if (transactions && isRevolvingDebt(debt)) return cardBalanceState(debt, transactions).balance;
   const anchorAmt = debt.balance_anchor ? debt.balance_anchor.amount : 0;
-  const applied = (debt.applied_payments || []).reduce((s, p) => s + Math.abs(p.amount), 0);
+  const anchorDate = debt.balance_anchor ? debt.balance_anchor.date : null;
+  // A balance typed on a date already reflects every payment made before it, as
+  // a loan's and a card's do. Such a payment still counts toward the
+  // installment it paid (see paidForCycle); it just doesn't come off again.
+  const applied = (debt.applied_payments || [])
+    .filter((p) => p && (!anchorDate || !p.date || p.date >= anchorDate))
+    .reduce((s, p) => s + Math.abs(p.amount), 0);
   return Math.max(0, round2(anchorAmt - applied));
 }
 
@@ -11800,7 +11806,7 @@ class ApplyPaymentModal extends Modal {
       // A loan's balance falls by the principal part only; the rest is interest.
       const after = loan
         ? loanState(Object.assign({}, d, { applied_payments: (d.applied_payments || []).concat(picked.map((c) => ({ amount: Math.abs(c.amount), date: c.date, extra: extraState.value || undefined }))) })).balance
-        : Math.max(0, debtBalance(d) - sum);
+        : debtBalance(Object.assign({}, d, { applied_payments: (d.applied_payments || []).concat(picked.map((c) => ({ amount: Math.abs(c.amount), date: c.date }))) }));
       totalEl.setText(
         sum <= 0
           ? "Nothing selected yet."
@@ -11906,12 +11912,14 @@ class ApplyPaymentModal extends Modal {
       const box = finder.createEl("input", { type: "text", cls: "budget-apply-search" });
       box.setAttr("placeholder", "Merchant, category or amount");
       const results = finder.createDiv({ cls: "budget-apply-results" });
+      // Payments from before the balance was set are fine to apply: they count
+      // toward the installment they paid, not the balance, which has them.
       const floor = d.balance_anchor && d.balance_anchor.date ? d.balance_anchor.date : null;
       const appliedHere = new Set((d.applied_payments || []).map((p) => p && p.tx_id).filter(Boolean));
       const drawResults = () => {
         results.empty();
         const listed = new Set(this.candidates.map((c) => c.id));
-        const found = searchDebits(this.transactions, { query: box.value, notBefore: floor, excludeIds: new Set([...appliedHere, ...listed]), rules: this.rules });
+        const found = searchDebits(this.transactions, { query: box.value, excludeIds: new Set([...appliedHere, ...listed]), rules: this.rules });
         if (!found.length) {
           results.createEl("p", { text: "Nothing matches.", cls: "budget-muted" });
           return;
@@ -11923,6 +11931,7 @@ class ApplyPaymentModal extends Modal {
           const meta = label.createDiv({ cls: "budget-apply-meta" });
           meta.createSpan({ text: t.date || "pending" });
           meta.createSpan({ text: t.resolved_category || "Uncategorized" });
+          if (floor && t.date && t.date < floor) meta.createSpan({ text: "already in the balance", cls: "budget-badge budget-badge-empty" });
           row.createSpan({ text: `$${Math.abs(t.amount).toFixed(2)}`, cls: "budget-amount" });
           const settled = this.ownership ? this.ownership.settlementOf(t) : null;
           if (settled) {
@@ -11943,7 +11952,12 @@ class ApplyPaymentModal extends Modal {
       finder.addEventListener("toggle", () => {
         if (finder.open) drawResults();
       });
-      if (floor) finder.createEl("p", { text: `From ${formatShortDate(floor)} on. Earlier payments are already in the balance.`, cls: "budget-muted budget-apply-scope" });
+      if (floor) finder.createEl("p", { text: `Before ${formatShortDate(floor)} it counts toward the installment, not the balance.`, cls: "budget-muted budget-apply-scope" });
+      // With nothing suggested, the search is the way in.
+      if (!this.candidates.length) {
+        finder.open = true;
+        drawResults();
+      }
     }
 
     if (loan) {
@@ -14597,12 +14611,19 @@ class BudgetDashboardView extends ItemView {
           : d._paidThisPeriod > 0
             ? `${label} — $${d._paidThisPeriod.toFixed(2)} paid`
             : `${label} minimum`,
-        cls: "budget-fixed-name"
+        // With Apply beside it, a long debt name wraps instead of being cut off.
+        cls: d._settled ? "budget-fixed-name" : "budget-fixed-name budget-buffer-text"
       });
       li.createSpan({
         text: d._settled ? `$${d._due.toFixed(2)}` : `$${d._remaining.toFixed(2)}`,
         cls: "budget-amount"
       });
+      // Already paid, but not recorded here? Say which payment it was.
+      if (!d._settled) {
+        const apply = li.createEl("button", { text: "Apply", cls: "budget-btn" });
+        apply.setAttr("title", "Pick the payment you already made");
+        apply.onclick = () => this.plugin.openApplyPaymentForKey(debtKey(d));
+      }
     });
 
     if (r.earmarked > 0) {
@@ -19772,6 +19793,14 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       this,
       rules
     ).open();
+  }
+
+  // Apply Payment for the debt with this key, read fresh from the files.
+  async openApplyPaymentForKey(key) {
+    const revolving = await readJSON(this.app, FILES.revolvingDebts, []);
+    const installment = await readJSON(this.app, FILES.installmentDebts, []);
+    const debt = revolving.concat(installment).find((d) => d && debtKey(d) === key);
+    if (debt) await this.openApplyPaymentFor(debt, null);
   }
 
   // Apply Payment, opened on one specific debt, with the transaction the user

@@ -330,7 +330,7 @@ console.log("\n12. Finding any transaction to apply to a debt");
   check("matching the merchant", ids({ query: "affirm" }), ["c"]);
   check("or the category", ids({ query: "utilit" }), ["b"]);
   check("or the amount, typed any way", [ids({ query: "75.50" }), ids({ query: "$75.5" }), ids({ query: "40" })], [["b"], ["b"], ["a"]]);
-  check("not before the balance was set", ids({ notBefore: D(-10) }).includes("e"), false);
+  check("a date floor still works when asked for", ids({ notBefore: D(-10) }).includes("e"), false);
   check("not ones already applied here", ids({ excludeIds: new Set(["a"]) }).includes("a"), false);
   check("a limit", ids({ limit: 2 }).length, 2);
 
@@ -348,7 +348,8 @@ console.log("\n12. Finding any transaction to apply to a debt");
   box.value = "";
   box.dispatchEvent({ type: "input" });
   const rows = byCls(finder, "budget-apply-row");
-  check("it lists what isn't there yet, without what's already applied here or before the balance", rows.map((r) => text(r).split(" ")[0]), ["SHELL", "ACME", "AFFIRM"]);
+  check("it lists what isn't there yet, without what's already applied here", rows.map((r) => text(r).split(" ")[0]), ["SHELL", "ACME", "AFFIRM", "OLD"]);
+  check("one from before the balance was set says so", [text(rows[3]).includes("already in the balance"), text(rows[0]).includes("already in the balance")], [true, false]);
   check("one that counts toward something else says so and can't be added", [text(rows[1]).includes("counts toward Electric bill"), !!button(rows[1], "Add")], [true, false]);
   box.value = "affirm";
   box.dispatchEvent({ type: "input" });

@@ -45,8 +45,9 @@
         <span .budget-fixed-name> ZIP - Console — paid
         <span .budget-amount> $67.50
       <div .budget-fixed-row>
-        <span .budget-fixed-name> Capital One Card minimum
+        <span .budget-buffer-text.budget-fixed-name> Capital One Card minimum
         <span .budget-amount> $40.00
+        <button .budget-btn> Apply
       <div .budget-fixed-row>
         <span .budget-fixed-name> Earmarked for savings goals
         <span .budget-amount> $250.00
