@@ -100,6 +100,7 @@
               <span .budget-badge.budget-badge-empty> no payment category
             <div .budget-cat-usage> $216.32 · monthly on day 8
           <div .budget-cat-btn-col>
+            <button .budget-btn> Set aside
             <button .budget-btn> Edit
             <button .budget-btn.budget-btn-danger> Delete
         <div .budget-cat-row>
@@ -109,6 +110,7 @@
               <span .budget-badge.budget-badge-transfer> Phone Bill
             <div .budget-cat-usage> $33.81 · monthly on day 4
           <div .budget-cat-btn-col>
+            <button .budget-btn> Set aside
             <button .budget-btn> Edit
             <button .budget-btn.budget-btn-danger> Delete
   <details .budget-collapsible.budget-settings-section>
@@ -130,6 +132,7 @@
       <div .setting-item>
         <span .setting-btn> New goal
         <span .setting-btn> New capped fund
+        <span .setting-btn> New sinking fund
       <p .budget-muted> No goals yet.
   <details .budget-collapsible.budget-settings-section>
     <summary .budget-collapsible-summary>

@@ -238,6 +238,10 @@ console.log("\n6. The allocator, both strategies");
     const now = strip(H.runAllocation(Object.assign({ accounts: ACCOUNTS }, args)));
     check(`no fund, ${label}: the only new field is an empty fundPeriods`, now.fundPeriods, {});
     delete now.fundPeriods;
+    // Sinking funds came later; with none, they hold back nothing.
+    check(`no fund, ${label}: no sinking funds hold back nothing`, [now.sinkingRows, now.sinkingHeld], [[], 0]);
+    delete now.sinkingRows;
+    delete now.sinkingHeld;
     check(`no fund, ${label}: otherwise identical to 1.17.0`, now, strip(old.runAllocation(args)));
   }
 }
@@ -816,7 +820,7 @@ async function overview({ placement = "cards", balance = 640.12, asOf = T, break
   const order = goalsCard.children.map((c) => c.classes.has("budget-fund-row") ? "fund" : c.classes.has("budget-apply-scope") ? "note" : c.classes.has("budget-goal-row") ? "goal" : null).filter(Boolean);
   check("after the goals' held-back note, which isn't about it", order, ["goal", "note", "fund"]);
   check("Move, Edit, Delete", buttonsIn(frow).map((b) => b._text), ["Move", "Edit", "Delete"]);
-  check("the goals head offers both kinds", buttonsIn(byCls(goalsCard, "budget-goals-head-btns")[0]).map((b) => b._text), ["New goal", "New capped fund"]);
+  check("the goals head offers both kinds", buttonsIn(byCls(goalsCard, "budget-goals-head-btns")[0]).map((b) => b._text), ["New goal", "New capped fund", "New sinking fund"]);
 
   // States.
   const heroCap = async (o) => byCls(byCls((await overview(Object.assign({ placement: "hero" }, o))).root, "budget-fund-hero")[0], "budget-hero-sub")[0];
@@ -935,7 +939,7 @@ console.log("\n19. Settings");
   SettingStub.buttons = [];
   const c = el("div");
   await tab.renderGoalSettings(c);
-  check("New capped fund beside New goal", SettingStub.buttons.map((b) => b.label), ["New goal", "New capped fund"]);
+  check("New capped fund beside New goal", SettingStub.buttons.map((b) => b.label), ["New goal", "New capped fund", "New sinking fund"]);
   SettingStub.buttons[1].cb();
   check("and it opens the fund modal", calls[0], ["fund", null, "function"]);
   const rows = byCls(c, "budget-cat-row");

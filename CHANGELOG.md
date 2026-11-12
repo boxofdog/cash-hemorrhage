@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.32.0 (unreleased)
+
+### Added
+- **Sinking funds, for bills like rent.** Give it an amount and a due day of the
+  month, and it works out what each paycheck needs to carry so all of it is
+  there on the day. That much comes off what you can spend, and it shows under
+  **Due this pay period** with its share per check. A paycheck on the day the
+  bill was last due counts toward the next one; a paycheck on the due date
+  itself is too late for it. Add one from **New sinking fund** on the Savings
+  goals card, in Settings, or with the command **Add sinking fund**. Start one
+  late and it holds back what's due by now, with nothing made up.
+- **Take over a bill.** A monthly bill in Settings has **Set aside**, which
+  starts a fund from it. The bill stops showing as due in full on its day, since
+  the fund is already holding it back.
+- **Follow a savings account.** Point a fund at the savings account you keep it
+  in. Money that arrives there counts as set aside, so less is held back from
+  spending. When the account is shared with a goal, you're asked which one each
+  transfer was for, like any other transfer.
+- **Paid and Undo last paid.** When the bill comes out, **Paid** lets you pick
+  the payment. It's counted as the bill, not spending, and the fund starts on
+  the next due date. Until you press it, the fund keeps holding the money
+  back. If the payment came out of the savings account, that comes off what's
+  saved there too.
+
 ## 1.31.1
 
 ### Added

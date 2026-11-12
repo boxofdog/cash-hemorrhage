@@ -89,6 +89,7 @@
       <div .budget-goals-head-btns>
         <button .budget-btn> New goal
         <button .budget-btn> New capped fund
+        <button .budget-btn> New sinking fund
     <div .budget-goal-row>
       <div .budget-goal-top>
         <div .budget-goal-name>

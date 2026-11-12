@@ -14,7 +14,8 @@
     "mutate:deletes": "python3 tools/mutate.py tools/mutations/deletes.py",
     "mutate:txlist": "python3 tools/mutate.py tools/mutations/tx-list.py",
     "mutate:retro": "python3 tools/mutate.py tools/mutations/retro-payments.py",
-    "mutate:debttypes": "python3 tools/mutate.py tools/mutations/debt-types.py"
+    "mutate:debttypes": "python3 tools/mutate.py tools/mutations/debt-types.py",
+    "mutate:sinking": "python3 tools/mutate.py tools/mutations/sinking.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",

@@ -3103,6 +3103,23 @@ function isCappedFund(goal) {
 }
 
 function regularGoals(goals) {
+  return (goals || []).filter((g) => g && !isCappedFund(g) && !isSinkingFund(g));
+}
+
+// A bill set aside a little each paycheck, so the whole of it is there on its
+// due date. Kept with the goals because it follows a savings account the same
+// way, and a transfer into that account can be for it.
+function isSinkingFund(goal) {
+  return !!goal && goal.kind === "sinking";
+}
+
+function sinkingFunds(goals) {
+  return (goals || []).filter(isSinkingFund);
+}
+
+// Everything a transfer into a savings account can be for: goals and sinking
+// funds, not a capped fund (whose account is all its own).
+function assignableGoals(goals) {
   return (goals || []).filter((g) => g && !isCappedFund(g));
 }
 
@@ -3927,6 +3944,145 @@ function paydaysBetween(schedule, fromDateStr, toDateStr) {
   return out;
 }
 
+// ---------- sinking funds ----------
+//
+// A bill set aside a little each paycheck. Rent due on the 1st with three
+// paychecks before it: a third of it comes off what's spendable at each, so the
+// whole of it is held by the day it's due. What's held is the running total,
+// not just this check's share, since last check's money is still in the account.
+// Money you've actually moved to a savings account the fund follows counts as
+// held there, so it stops being held back from spendable here.
+
+// The due date in a month; a day the month hasn't got is its last day.
+function sinkingDueIn(day, year, monthIndex) {
+  return toLocalISO(new Date(year, monthIndex, dueDayInMonth(day, year, monthIndex)));
+}
+
+// The first due date after a date.
+function sinkingDueAfter(day, dateStr) {
+  const [y, mo] = String(dateStr).split("-").map(Number);
+  for (let i = 0; i < 4; i++) {
+    const due = sinkingDueIn(day, y, mo - 1 + i);
+    if (due > dateStr) return due;
+  }
+  return null;
+}
+
+// The last due date before a date.
+function sinkingDueBefore(day, dateStr) {
+  const [y, mo] = String(dateStr).split("-").map(Number);
+  for (let i = 0; i < 4; i++) {
+    const due = sinkingDueIn(day, y, mo - 1 - i);
+    if (due < dateStr) return due;
+  }
+  return null;
+}
+
+// Where a fund stands: the due date it's building toward, how many paychecks
+// fund it, what each one carries, what should be set aside by now, and how much
+// of that is still to be held back from spendable. `schedule` is the pay
+// schedule; without one it goes by the length of a pay period.
+function sinkingHold(fund, { schedule = null, todayStr = todayLocal(), periodDays = 14 } = {}) {
+  const day = Number(fund && fund.due_day_of_month);
+  const amount = round2(Number(fund && fund.target_amount) || 0);
+  if (!(day >= 1 && day <= 31) || !(amount > 0)) return null;
+  const through = fund.paid_through || sinkingDueBefore(day, addDays(todayStr, 1));
+  const due = sinkingDueAfter(day, through);
+  const prevDue = due ? sinkingDueBefore(day, due) : null;
+  if (!due || !prevDue) return null;
+
+  // The paychecks that fund this due date: from the previous due date up to the
+  // day before this one. One that lands on the previous due date starts the
+  // next cycle; one that lands on the due date comes too late for it.
+  const paydays = schedule ? paydaysBetween(schedule, addDays(prevDue, -1), addDays(due, -1)) : null;
+  let total;
+  let received;
+  // A schedule that gives no paychecks in the window (a cadence this version
+  // doesn't know) is as good as none: go by the pay period's length instead.
+  if (paydays && paydays.length) {
+    total = paydays.length;
+    received = paydays.filter((p) => p <= todayStr).length;
+  } else {
+    const len = Math.max(1, Number(periodDays) || 14);
+    total = Math.max(1, Math.round(daysBetween(prevDue, due) / len));
+    received = Math.max(0, Math.floor(daysBetween(prevDue, todayStr) / len) + 1);
+  }
+  const overdue = todayStr >= due;
+  if (received > total) received = total;
+
+  const saved = round2(Math.min(amount, Math.max(0, Number(fund.saved_amount) || 0)));
+  const target = round2((amount * received) / total);
+  return {
+    id: fund.id,
+    name: fund.name,
+    amount,
+    due,
+    prevDue,
+    total,
+    received,
+    perCheck: round2(amount / total),
+    target,
+    saved,
+    hold: round2(Math.max(0, target - saved)),
+    overdue
+  };
+}
+
+// Every fund's standing, and what they hold back together.
+function sinkingHolds(goals, opts = {}) {
+  const rows = sinkingFunds(goals).map((f) => sinkingHold(f, opts)).filter(Boolean);
+  return { rows, total: round2(rows.reduce((s, r) => s + r.hold, 0)) };
+}
+
+// How much of its amount a fund has set aside, in savings or held back here.
+function sinkingSetAside(row) {
+  return round2(Math.max(row.target, row.saved));
+}
+
+// The same shape goalProgress gives, for the goal row's bar and figures.
+function sinkingProgress(row) {
+  const saved = sinkingSetAside(row);
+  return {
+    saved,
+    target: row.amount,
+    remaining: round2(Math.max(0, row.amount - saved)),
+    pct: row.amount > 0 ? Math.min(100, (saved / row.amount) * 100) : 0,
+    complete: false
+  };
+}
+
+// A payment recorded for a due date, linking the transaction when one was
+// picked, and the fund starts on the next due date. Like a bill's.
+function recordSinkingPayment(fund, dueDate, tx) {
+  fund.paid_through = dueDate;
+  if (!fund.payment_category && tx && tx.resolved_category && tx.resolved_category !== "Uncategorized") {
+    fund.payment_category = tx.resolved_category;
+  }
+  if (!Array.isArray(fund.linked_payments)) fund.linked_payments = [];
+  fund.linked_payments.push({
+    tx_id: tx && tx.id ? tx.id : null,
+    amount: tx ? round2(Math.abs(tx.amount || 0)) : null,
+    date: tx && tx.date ? tx.date : dueDate,
+    paid_for: dueDate
+  });
+  return fund;
+}
+
+// Takes the last payment back, which puts the fund back on that due date.
+function undoSinkingPayment(fund) {
+  const list = Array.isArray(fund.linked_payments) ? fund.linked_payments : [];
+  if (!list.length) return null;
+  let last = 0;
+  list.forEach((p, i) => {
+    if (p && (!list[last] || String(p.paid_for || "") >= String(list[last].paid_for || ""))) last = i;
+  });
+  const gone = list[last];
+  fund.linked_payments = list.filter((_, i) => i !== last);
+  const day = Number(fund.due_day_of_month);
+  if (gone && gone.paid_for && day >= 1) fund.paid_through = sinkingDueBefore(day, gone.paid_for);
+  return gone;
+}
+
 // What each remaining paycheck needs to carry to land the goal on time.
 function goalPace(goal, todayStr, periodDays, schedule) {
   if (!goal.target_date) return null;
@@ -3983,7 +4139,9 @@ function earmarkedSavings(goals) {
     (goals || []).reduce(
       (sum, g) =>
         sum +
-        (g.contributions || [])
+        // A sinking fund's hold is worked out from its schedule, not from logged
+        // contributions, so counting them here would hold the money back twice.
+        (isSinkingFund(g) ? [] : g.contributions || [])
           .filter((c) => !c.linked_tx_id && c.amount > 0)
           .reduce((s, c) => s + c.amount, 0),
       0
@@ -4076,7 +4234,7 @@ async function deleteContribution(app, goalId, contributionId) {
 const GOAL_CONTRIBUTION_MATCH_DAYS = 7;
 
 function accountGoals(goals) {
-  return regularGoals(goals).filter((g) => g && g.id && g.account_id);
+  return assignableGoals(goals).filter((g) => g && g.id && g.account_id);
 }
 
 // The contribution on `goal` that `tx` carries out: not yet matched to any
@@ -7232,6 +7390,10 @@ function buildOwnershipIndex({
   (fixedExpenses || []).forEach((f) =>
     (f.linked_payments || []).forEach((p) => settle(p && p.tx_id, "fixed_expense", f.id || f.name, f.name))
   );
+  // A sinking fund's rent payment is a bill paid, not spending.
+  (goals || []).filter(isSinkingFund).forEach((g) =>
+    (g.linked_payments || []).forEach((p) => settle(p && p.tx_id, "fixed_expense", g.id, g.name))
+  );
   (goals || []).forEach((g) =>
     (g.contributions || []).forEach((c) => settle(c && c.linked_tx_id, "savings", g.id, g.name))
   );
@@ -7265,6 +7427,11 @@ function buildOwnershipIndex({
   (fixedExpenses || []).forEach((f) => {
     if (f && f.payment_category) fixedClassCategories.set(norm(f.payment_category), f.name || f.payment_category);
   });
+  // A sinking fund's payments land where a bill's do.
+  sinkingFunds(goals).forEach((g) => {
+    if (g.name) fixedClassCategories.set(norm(g.name), g.name);
+    if (g.payment_category) fixedClassCategories.set(norm(g.payment_category), g.name);
+  });
 
   // Categories a tracker already SCHEDULES payments in — debts and fixed
   // expenses that have declared where their charges land, plus the expense-name
@@ -7280,6 +7447,10 @@ function buildOwnershipIndex({
     if (!f) return;
     if (f.payment_category) scheduledCategories.add(f.payment_category);
     if (f.name) scheduledCategories.add(f.name);
+  });
+  sinkingFunds(goals).forEach((g) => {
+    if (g.payment_category) scheduledCategories.add(g.payment_category);
+    if (g.name) scheduledCategories.add(g.name);
   });
 
   function ownerOf(tx) {
@@ -7800,7 +7971,7 @@ function inPeriod(dateStr, todayStr, nextPaydayStr) {
   return dateStr >= todayStr && dateStr < nextPaydayStr;
 }
 
-function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, installmentDebts, revolvingDebts, upcomingSubs = [], earmarked = 0, savingsMode = false, goals = [], paychecksFor = {}, transactions = [], categoryMeta = [], bufferMode = "auto", manualBuffer = 100, currentDateStr = null, savingsDeadline = null, bufferAllocation = null, subscriptionKeys = [], rules = [], accounts = [] }) {
+function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, installmentDebts, revolvingDebts, upcomingSubs = [], earmarked = 0, savingsMode = false, goals = [], paychecksFor = {}, transactions = [], categoryMeta = [], bufferMode = "auto", manualBuffer = 100, currentDateStr = null, savingsDeadline = null, bufferAllocation = null, subscriptionKeys = [], rules = [], accounts = [], sinkingRows = [] }) {
   // todayStr is the FIXED pay-period start, so obligations that came due earlier
   // in the period stay visible. The discretionary buffer is a forward-looking
   // reserve and must count from the actual current date instead.
@@ -7829,7 +8000,11 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
     rules
   });
 
-  const dueThisPeriod = fixedExpenses.filter((f) => fixedExpenseDueInRange(f, todayStr, nextPaydayStr));
+  // A bill a sinking fund has taken over is held back by the fund, a share at a
+  // time, so it isn't also due in full when its day comes.
+  const replacedBills = new Set(sinkingFunds(goals).map((g) => g.replaces_bill_id).filter(Boolean));
+  const sinkingHeld = round2((sinkingRows || []).reduce((s, r) => s + (Number(r.hold) || 0), 0));
+  const dueThisPeriod = fixedExpenses.filter((f) => !(f.id && replacedBills.has(f.id)) && fixedExpenseDueInRange(f, todayStr, nextPaydayStr));
   const isPaid = (f) => {
     // Rolling expenses advance their own next_due_date when paid, so being
     // still due here already means unpaid.
@@ -7950,7 +8125,7 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
   });
 
   const committed =
-    periodFixedTotal + requiredMinimums + periodSubsTotal + round2(earmarked) + variableNecessitiesTotal;
+    periodFixedTotal + requiredMinimums + periodSubsTotal + round2(earmarked) + variableNecessitiesTotal + sinkingHeld;
 
   const bufferCalc = calculateDynamicBuffer(budgetTx, categoryMeta, currentDate, nextPaydayStr);
 
@@ -8079,6 +8254,8 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
     upcomingSubs,
     periodSubsTotal,
     earmarked: round2(earmarked),
+    sinkingRows: sinkingRows || [],
+    sinkingHeld,
     committed: round2(committed),
     variableNecessities,
     variableNecessitiesTotal,
@@ -10039,6 +10216,114 @@ class ManualBalanceModal extends Modal {
           this.onSubmit(r.snapshot);
         })
       );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+// A bill set aside a little each paycheck.
+class SinkingFundModal extends Modal {
+  // `accountChoices` is goalAccountChoices(...); `bills` the monthly bills this
+  // can take over; `prefill` a bill to start from.
+  constructor(app, onSubmit, existing = null, { accountChoices = [], bills = [], prefill = null } = {}) {
+    super(app);
+    this.onSubmit = onSubmit;
+    this.existing = existing;
+    this.accountChoices = accountChoices || [];
+    this.bills = bills || [];
+    this.prefill = prefill;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const e = this.existing;
+    const p = this.prefill;
+    const isEdit = !!(e && e.id);
+    contentEl.createEl("h2", { text: isEdit ? `Edit sinking fund: ${e.name}` : "New sinking fund" });
+    const d = {
+      name: e ? e.name : p ? p.name || "" : "",
+      amount: e ? String(e.target_amount || "") : p && p.amount ? String(p.amount) : "",
+      day: e ? String(e.due_day_of_month || "") : p && p.due_day_of_month ? String(p.due_day_of_month) : "",
+      account_id: e ? e.account_id || "" : "",
+      track_from: e ? e.track_from || "" : "",
+      replaces: e ? e.replaces_bill_id || "" : p && p.id ? p.id : ""
+    };
+
+    new Setting(contentEl).setName("Name").addText((t) => t.setPlaceholder("Rent").setValue(d.name).onChange((v) => (d.name = v)));
+    const amountSetting = new Setting(contentEl).setName("Amount due");
+    amountSetting.addText((t) => bindMoneyInput(t, amountSetting).setValue(d.amount).onChange((v) => (d.amount = v)));
+    new Setting(contentEl)
+      .setName("Due day of the month")
+      .addText((t) => {
+        t.inputEl.type = "number";
+        t.inputEl.min = "1";
+        t.inputEl.max = "31";
+        t.setValue(d.day).onChange((v) => (d.day = v.trim()));
+      });
+
+    // A bill this takes over is held back here, a share at a time, so it isn't
+    // also due in full on its day.
+    if (this.bills.length) {
+      new Setting(contentEl)
+        .setName("Takes over bill")
+        .addDropdown((dd) => {
+          dd.addOption("", "None");
+          this.bills.forEach((b) => dd.addOption(b.id, `${b.name} ($${(b.amount || 0).toFixed(2)})`));
+          dd.setValue(d.replaces).onChange((v) => (d.replaces = v));
+        });
+    }
+
+    const choices = this.accountChoices.slice();
+    if (d.account_id && !choices.some((c) => c.id === d.account_id)) {
+      choices.unshift({ id: d.account_id, label: `${d.account_id} (no longer in your accounts)`, others: [] });
+    }
+    if (choices.length) {
+      new Setting(contentEl)
+        .setName("Savings account")
+        .setDesc("Optional. Transfers into it count as set aside.")
+        .addDropdown((dd) => {
+          dd.addOption("", "None — hold it back here");
+          choices.forEach((c) => dd.addOption(c.id, c.label + (c.others.length ? ` (also ${c.others.join(", ")})` : "")));
+          dd.setValue(d.account_id).onChange((v) => {
+            // A new account starts counting today: what's in it already was there first.
+            if (v && v !== (e && e.account_id)) d.track_from = todayLocal();
+            if (!v) d.track_from = "";
+            d.account_id = v;
+          });
+        });
+    }
+
+    new Setting(contentEl).addButton((b) =>
+      b
+        .setButtonText(isEdit ? "Save changes" : "Create")
+        .setCta()
+        .onClick(() => {
+          if (!d.name.trim()) {
+            new Notice("Give it a name.");
+            return;
+          }
+          const amount = requireMoney(d.amount, "Amount due");
+          if (amount == null) return;
+          if (amount <= 0) {
+            new Notice("Amount due must be above 0.");
+            return;
+          }
+          const day = Number(d.day);
+          if (!Number.isInteger(day) || day < 1 || day > 31) {
+            new Notice("Due day: a number from 1 to 31.");
+            return;
+          }
+          this.close();
+          this.onSubmit({
+            name: d.name.trim(),
+            target_amount: round2(amount),
+            due_day_of_month: day,
+            account_id: d.account_id || null,
+            track_from: d.account_id ? d.track_from || todayLocal() : null,
+            replaces_bill_id: d.replaces || null
+          });
+        })
+    );
   }
   onClose() {
     this.contentEl.empty();
@@ -14696,6 +14981,25 @@ class BudgetDashboardView extends ItemView {
       }
     });
 
+    // Sinking funds: what's held back so far for each, and what each paycheck
+    // carries. Paid, once the payment has come out of your account.
+    (r.sinkingRows || []).forEach((s) => {
+      const li = fixedCard.createDiv({ cls: "budget-fixed-row" });
+      const name = li.createSpan({ cls: "budget-fixed-name budget-buffer-text" });
+      name.createSpan({ text: s.name });
+      name.createSpan({
+        text:
+          `$${s.perCheck.toFixed(2)} a check · ` +
+          (s.overdue ? `was due ${formatShortDate(s.due)}` : `due ${formatShortDate(s.due)}`) +
+          (s.saved > 0 ? ` · $${s.saved.toFixed(2)} in savings` : ""),
+        cls: "budget-buffer-sub"
+      });
+      li.createSpan({ text: `$${s.hold.toFixed(2)}`, cls: "budget-amount" });
+      const paid = li.createEl("button", { text: "Paid", cls: "budget-btn" });
+      paid.setAttr("title", "Pick the payment that covered this due date");
+      paid.onclick = () => this.plugin.markSinkingPaid(s.id);
+    });
+
     if (r.earmarked > 0) {
       const li = fixedCard.createDiv({ cls: "budget-fixed-row" });
       li.createSpan({ text: "Earmarked for savings goals", cls: "budget-fixed-name" });
@@ -15145,7 +15449,7 @@ class BudgetDashboardView extends ItemView {
   // there before.
   renderGoalTransferInbox(container, ask, ctx) {
     const { rules } = ctx;
-    const goalsById = new Map(regularGoals(ctx.savingsGoals).map((g) => [g.id, g]));
+    const goalsById = new Map(assignableGoals(ctx.savingsGoals).map((g) => [g.id, g]));
     const n = ask.length;
     if (!this.goalInboxId) this.goalInboxId = `budget-goal-inbox-${Math.random().toString(36).slice(2, 8)}`;
     const inbox = container.createDiv({ cls: "budget-inbox budget-goal-inbox" });
@@ -15218,6 +15522,7 @@ class BudgetDashboardView extends ItemView {
     // put here; they render after the goals, which is also the order surplus
     // reaches them.
     const goals = regularGoals(ctx.savingsGoals);
+    const sinking = sinkingFunds(ctx.savingsGoals);
     const allFunds = cappedFunds(ctx.savingsGoals);
     const fundsHere = allFunds.filter((f) => fundPlacement(f) === "goals");
     const goalsCard = container.createDiv({ cls: "budget-card budget-goals-card" });
@@ -15244,21 +15549,27 @@ class BudgetDashboardView extends ItemView {
     const addFundBtn = headBtns.createEl("button", { text: "New capped fund", cls: "budget-btn" });
     addFundBtn.setAttr("title", "A fund that follows a savings account's balance, up to a ceiling");
     addFundBtn.onclick = () => this.plugin.promptCappedFund();
+    const addSinkBtn = headBtns.createEl("button", { text: "New sinking fund", cls: "budget-btn" });
+    addSinkBtn.setAttr("title", "A bill like rent, set aside a little each paycheck");
+    addSinkBtn.onclick = () => this.plugin.promptSinkingFund();
 
     if (allFunds.length) this.fundDropSlot(goalsCard, "goals", "Drop here to show it in Savings goals");
 
     const transferQueue = goalTransferQueue(allTx, ctx.savingsGoals);
     if (transferQueue.ask.length) this.renderGoalTransferInbox(goalsCard, transferQueue.ask, ctx);
 
-    if (goals.length === 0 && !fundsHere.length) {
+    if (goals.length === 0 && !fundsHere.length && !sinking.length) {
     goalsCard.createEl("p", {
       text: "No goals yet. Sinking funds are useful for irregular costs \u2014 vet bills, car repairs, annual renewals.",
       cls: "budget-muted"
     });
     } else {
     const periodDays = this.lastResult ? Math.max(daysBetween(this.lastResult.todayStr, this.lastResult.nextPaydayStr), 1) : 14;
-    goals.forEach((g) => {
-      const p = goalProgress(g);
+    const payScheduleNow = resolvePaySchedule(this.plugin.settings, allTx);
+    goals.concat(sinking).forEach((g) => {
+      // A sinking fund shows what's set aside for it, not a goal's saved amount.
+      const sinkRow = isSinkingFund(g) ? sinkingHold(g, { schedule: payScheduleNow, todayStr: todayLocal(), periodDays }) : null;
+      const p = sinkRow ? sinkingProgress(sinkRow) : goalProgress(g);
       const row = goalsCard.createDiv({ cls: "budget-goal-row" });
 
       const top = row.createDiv({ cls: "budget-goal-top" });
@@ -15282,7 +15593,9 @@ class BudgetDashboardView extends ItemView {
       const bits = [];
       let note = "";
       const due = g.target_date ? formatShortDate(g.target_date) : "";
-      if (p.complete) {
+      if (sinkRow) {
+        bits.push(`$${sinkRow.perCheck.toFixed(2)} a check`, sinkRow.overdue ? `was due ${formatShortDate(sinkRow.due)}` : `due ${formatShortDate(sinkRow.due)}`);
+      } else if (p.complete) {
         bits.push("Goal reached.");
       } else if (pace && g.target_date) {
         bits.push(`$${p.remaining.toFixed(2)} to go`);
@@ -15304,7 +15617,7 @@ class BudgetDashboardView extends ItemView {
       if (g.account_id) {
         bits.push(
           `follows ${goalAccount ? accountLabel(goalAccount) : `${g.account_id} (no longer in your accounts)`}` +
-            (g.track_from ? ` since ${formatShortDate(g.track_from)}` : "")
+            (g.track_from && !sinkRow ? ` since ${formatShortDate(g.track_from)}` : "")
         );
       }
       const metaSpan = meta.createSpan({ text: bits.join(" \u00b7 ") });
@@ -15312,6 +15625,17 @@ class BudgetDashboardView extends ItemView {
 
       const btns = row.createDiv({ cls: "budget-goal-btns" });
 
+      if (sinkRow) {
+        const paidBtn = btns.createEl("button", { text: "Paid", cls: "budget-btn" });
+        paidBtn.setAttr("title", "Pick the payment that covered this due date");
+        paidBtn.onclick = () => this.plugin.markSinkingPaid(g.id);
+        if ((g.linked_payments || []).length) {
+          const undoPaid = btns.createEl("button", { text: "Undo last paid", cls: "budget-btn" });
+          undoPaid.onclick = () => this.plugin.undoSinkingPaid(g.id);
+        }
+      }
+
+      if (!sinkRow) {
       // Pinning is one goal at a time, so this toggles rather than accumulates.
       const pinBtn = btns.createEl("button", {
         text: g.pinned ? "Unpin" : "Pin to dashboard",
@@ -15342,8 +15666,13 @@ class BudgetDashboardView extends ItemView {
           }
         }).open();
       };
+      }
       const editBtn = btns.createEl("button", { text: "Edit", cls: "budget-btn" });
       editBtn.onclick = () => {
+        if (sinkRow) {
+          this.plugin.promptSinkingFund(g);
+          return;
+        }
         new SavingsGoalModal(
           this.app,
           async (patch) => {
@@ -15368,6 +15697,10 @@ class BudgetDashboardView extends ItemView {
 
       const delGoal = btns.createEl("button", { text: "Delete", cls: "budget-btn budget-btn-danger" });
       delGoal.onclick = () => {
+        if (sinkRow) {
+          this.plugin.confirmDeleteSinkingFund(g);
+          return;
+        }
         const pr = goalProgress(g);
         const unlinked = (g.contributions || []).filter((c) => !c.linked_tx_id && c.amount > 0).length;
         new ConfirmModal(this.app, {
@@ -18397,6 +18730,12 @@ class BudgetSettingTab extends PluginSettingTab {
           .setButtonText("New capped fund")
           .setTooltip("A fund that follows a savings account's balance, up to a ceiling")
           .onClick(() => this.plugin.promptCappedFund(null, () => this.display()))
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText("New sinking fund")
+          .setTooltip("A bill like rent, set aside a little each paycheck")
+          .onClick(() => this.plugin.promptSinkingFund(null, null, () => this.display()))
       );
 
     if (!goals.length) {
@@ -18408,6 +18747,10 @@ class BudgetSettingTab extends PluginSettingTab {
     goals.forEach((g) => {
       if (isCappedFund(g)) {
         this.renderFundSettingsRow(list, g, accounts);
+        return;
+      }
+      if (isSinkingFund(g)) {
+        this.renderSinkingSettingsRow(list, g, accounts);
         return;
       }
       const p = goalProgress(g);
@@ -18465,6 +18808,21 @@ class BudgetSettingTab extends PluginSettingTab {
 
   // A capped fund in the settings list: what it follows and where it shows,
   // with Edit and Delete. Moving it is on the Overview, where you can see it.
+  renderSinkingSettingsRow(list, g, accounts) {
+    const row = list.createDiv({ cls: "budget-cat-row" });
+    const textCol = row.createDiv({ cls: "budget-cat-text-col" });
+    const nameLine = textCol.createDiv({ cls: "budget-cat-name" });
+    nameLine.createSpan({ text: g.name });
+    nameLine.createSpan({ text: "sinking fund", cls: "budget-badge budget-badge-pinned" });
+    const acct = g.account_id ? (accounts || []).find((a) => a && a.id === g.account_id) : null;
+    const bits = [`$${(g.target_amount || 0).toFixed(2)} · monthly on day ${g.due_day_of_month}`];
+    if (g.account_id) bits.push(`follows ${acct ? accountLabel(acct) : g.account_id}`);
+    textCol.createDiv({ text: bits.join(" · "), cls: "budget-cat-usage" });
+    const btnCol = row.createDiv({ cls: "budget-cat-btn-col" });
+    btnCol.createEl("button", { text: "Edit", cls: "budget-btn" }).onclick = () => this.plugin.promptSinkingFund(g, null, () => this.display());
+    btnCol.createEl("button", { text: "Delete", cls: "budget-btn budget-btn-danger" }).onclick = () => this.plugin.confirmDeleteSinkingFund(g);
+  }
+
   renderFundSettingsRow(list, fund, accounts) {
     const p = fundProgress(fund, accounts);
     const row = list.createDiv({ cls: "budget-cat-row" });
@@ -18518,6 +18876,7 @@ class BudgetSettingTab extends PluginSettingTab {
     });
 
     const fixedList = await readJSON(this.app, FILES.fixedExpenses, []);
+    const sinkingNow = sinkingFunds(await readJSON(this.app, FILES.savingsGoals, []));
     if (!fixedList.length) {
       containerEl.createEl("p", { text: "None yet — add one from the dashboard.", cls: "budget-muted" });
     } else {
@@ -18541,6 +18900,11 @@ class BudgetSettingTab extends PluginSettingTab {
           if (f.flagged_for_review) {
             nameLine.createSpan({ text: "review", cls: "budget-badge budget-badge-empty" });
           }
+          const takenBy = f.id ? sinkingNow.find((s) => s.replaces_bill_id === f.id) : null;
+          if (takenBy) {
+            const tag = nameLine.createSpan({ text: "set aside", cls: "budget-badge budget-badge-keep" });
+            tag.setAttr("title", `${takenBy.name} holds this back a share at a time`);
+          }
           textCol.createDiv({
             text: isRollingExpense(f)
               ? `$${(f.amount || 0).toFixed(2)} · every ${f.interval_days} days · next ${f.next_due_date}`
@@ -18550,6 +18914,11 @@ class BudgetSettingTab extends PluginSettingTab {
           });
 
           const btnCol = row.createDiv({ cls: "budget-cat-btn-col" });
+          if (!takenBy && f.id && f.due_day_of_month && !isRollingExpense(f)) {
+            const setAside = btnCol.createEl("button", { text: "Set aside", cls: "budget-btn" });
+            setAside.setAttr("title", "Hold it back a little each paycheck instead of all at once");
+            setAside.onclick = () => this.plugin.promptSinkingFund(null, f, () => this.display());
+          }
           const edit = btnCol.createEl("button", { text: "Edit", cls: "budget-btn" });
           edit.onclick = () => {
             new AddFixedExpenseModal(
@@ -18952,6 +19321,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
 
     this.addCommand({ id: "set-up-files", name: "Set up data files and folders", callback: () => this.setupFiles() });
     this.addCommand({ id: "show-tour", name: "Show tour", callback: () => this.showTour() });
+    this.addCommand({ id: "add-sinking-fund", name: "Add sinking fund", callback: () => this.promptSinkingFund() });
     this.addCommand({ id: "enter-paycheck", name: "Enter paycheck", callback: () => this.promptEnterPaycheck() });
     this.addCommand({ id: "add-account", name: "Add account", callback: () => this.promptAddAccount() });
     this.addCommand({ id: "add-revolving-debt", name: "Add credit card terms", callback: () => this.promptAddCreditCardTerms() });
@@ -21014,6 +21384,127 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     }).open();
   }
 
+  // New or edited sinking fund. `bill` starts it from a recurring bill, which
+  // it then takes over.
+  async promptSinkingFund(existing = null, bill = null, onDone = null) {
+    const accounts = await readJSON(this.app, FILES.accounts, []);
+    const goals = await readJSON(this.app, FILES.savingsGoals, []);
+    const fixed = await readJSON(this.app, FILES.fixedExpenses, []);
+    const taken = new Set(sinkingFunds(goals).filter((g) => !existing || g.id !== existing.id).map((g) => g.replaces_bill_id).filter(Boolean));
+    const bills = fixed.filter((f) => f && f.id && f.due_day_of_month && !isRollingExpense(f) && !taken.has(f.id));
+    new SinkingFundModal(
+      this.app,
+      async (data) => {
+        const list = await readJSON(this.app, FILES.savingsGoals, []);
+        if (existing && existing.id) {
+          const i = list.findIndex((g) => g && g.id === existing.id);
+          if (i < 0) return;
+          list[i] = Object.assign({}, list[i], data);
+          if (!list[i].account_id) {
+            delete list[i].account_id;
+            delete list[i].track_from;
+          }
+          if (!list[i].replaces_bill_id) delete list[i].replaces_bill_id;
+        } else {
+          const today = todayLocal();
+          const fund = Object.assign(
+            { id: genId("sink"), kind: "sinking", contributions: [], saved_amount: 0, linked_payments: [], created: today },
+            data,
+            // What's already come due is behind it: it starts on the next due date.
+            { paid_through: sinkingDueBefore(data.due_day_of_month, addDays(today, 1)) }
+          );
+          if (!fund.account_id) {
+            delete fund.account_id;
+            delete fund.track_from;
+          }
+          if (!fund.replaces_bill_id) delete fund.replaces_bill_id;
+          list.push(fund);
+        }
+        await writeJSON(this.app, FILES.savingsGoals, list);
+        const added = data.account_id ? await this.assignGoalTransfersNow() : 0;
+        new Notice(`${existing ? "Updated" : "Created"} ${data.name}.` + goalTransfersAddedText(added));
+        await this.refreshAfterDataChange();
+        if (onDone) onDone();
+      },
+      existing,
+      { accountChoices: goalAccountChoices(accounts, goals, existing), bills, prefill: bill }
+    ).open();
+  }
+
+  // Pay a fund's due date: pick the transaction that paid it, and it starts on
+  // the next one. A payment out of the savings account it follows also comes off
+  // what that account holds for it.
+  async markSinkingPaid(fundId) {
+    const goals = await readJSON(this.app, FILES.savingsGoals, []);
+    const fund = goals.find((g) => g && g.id === fundId && isSinkingFund(g));
+    if (!fund) return;
+    const transactions = await readJSON(this.app, FILES.transactions, []);
+    const row = sinkingHold(fund, { schedule: resolvePaySchedule(this.settings, transactions), todayStr: todayLocal() });
+    if (!row) return;
+    const rules = await readJSON(this.app, FILES.rules, []);
+    new MarkPaidModal(
+      this.app,
+      { id: fund.id, name: fund.name, amount: fund.target_amount },
+      row.due,
+      async (paidFor, tx) => {
+        const list = await readJSON(this.app, FILES.savingsGoals, []);
+        const f = list.find((g) => g && g.id === fundId);
+        if (!f) return;
+        recordSinkingPayment(f, paidFor, tx);
+        if (tx && f.account_id && tx.account_id === f.account_id && tx.amount < 0) {
+          const claimed = list.some((g) => (g.contributions || []).some((c) => c && c.linked_tx_id === tx.id));
+          if (!claimed) {
+            const ledger = await readJSON(this.app, FILES.transactions, []);
+            const t = ledger.find((x) => x && x.id === tx.id);
+            assignGoalTransfer(list, tx, f.id);
+            if (t) {
+              delete t.goal_skip;
+              delete t.goal_review;
+              await writeJSON(this.app, FILES.transactions, ledger);
+            }
+          }
+        }
+        await writeJSON(this.app, FILES.savingsGoals, list);
+        new Notice(`${f.name} paid. Next due ${sinkingDueAfter(Number(f.due_day_of_month), paidFor) || ""}.`.trim());
+        await this.refreshAfterDataChange();
+      },
+      this,
+      rules
+    ).open();
+  }
+
+  async undoSinkingPaid(fundId) {
+    const list = await readJSON(this.app, FILES.savingsGoals, []);
+    const f = list.find((g) => g && g.id === fundId && isSinkingFund(g));
+    if (!f) return;
+    const gone = undoSinkingPayment(f);
+    if (!gone) return;
+    await writeJSON(this.app, FILES.savingsGoals, list);
+    new Notice(`Took back the ${f.name} payment.`);
+    await this.refreshAfterDataChange();
+  }
+
+  confirmDeleteSinkingFund(g) {
+    const paid = (g.linked_payments || []).filter((p) => p && p.tx_id).length;
+    new ConfirmModal(this.app, {
+      title: `Delete “${g.name}”?`,
+      body: [
+        "It stops holding money back for this. Nothing moves.",
+        g.replaces_bill_id ? "The bill it took over goes back to being due in full." : null,
+        paid ? `${paid} payment${paid === 1 ? "" : "s"} you linked will count as spending again.` : null
+      ],
+      onConfirm: async () => {
+        const list = await readJSON(this.app, FILES.savingsGoals, []);
+        // Its account's transfers stay out of the queue rather than landing on
+        // whichever goal is left on the account at the next sync.
+        await this.releaseGoalTransfers((g.contributions || []).map((c) => c && c.linked_tx_id), { skip: true });
+        await writeJSON(this.app, FILES.savingsGoals, list.filter((x) => x.id !== g.id));
+        new Notice(`Deleted ${g.name}.`);
+        await this.refreshAfterDataChange();
+      }
+    }).open();
+  }
+
   // Opens the list of dismissed suggestions.
   async openDismissed() {
     const rules = await readJSON(this.app, FILES.rules, []);
@@ -21608,7 +22099,12 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       bufferAllocation: this.lastPaycheckInputs.bufferAllocation,
       subscriptionKeys,
       rules: subRules,
-      accounts
+      accounts,
+      sinkingRows: sinkingHolds(goalsForEarmark, {
+        schedule: resolvePaySchedule(this.settings, allTxForSubs),
+        todayStr: todayLocal(),
+        periodDays: Math.max(1, daysBetween(todayStr, nextPaydayStr))
+      }).rows
     });
 
     const totalAvailableCredit = accounts

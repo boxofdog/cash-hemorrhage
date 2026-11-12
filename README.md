@@ -47,6 +47,10 @@ savings focus**.
 - **Bills and subscriptions.** Fixed bills, subscription audit, and matching of
   bank transactions to the bills they pay.
 - **Savings goals.** Goals can be linked to a savings account.
+- **Sinking funds.** Set aside a monthly bill like rent a little each
+  paycheck, so all of it is there on the day. Each check's share comes off
+  what you can spend. Link a savings account and transfers into it count as
+  set aside; press **Paid** when the bill comes out.
 - **Transactions.** Import a bank CSV, or sync automatically with SimpleFIN
   Bridge. Rules and labels categorize transactions; transfers between your own
   accounts are suggested and you confirm them.
