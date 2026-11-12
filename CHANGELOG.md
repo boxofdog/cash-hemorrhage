@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.31.1 (unreleased)
+## 1.31.1
 
 ### Added
 - **Chart one kind of debt at a time.** With two or more kinds of debt, the
