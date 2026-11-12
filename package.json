@@ -13,7 +13,8 @@
     "mutate:paydays": "python3 tools/mutate.py tools/mutations/pay-days.py",
     "mutate:deletes": "python3 tools/mutate.py tools/mutations/deletes.py",
     "mutate:txlist": "python3 tools/mutate.py tools/mutations/tx-list.py",
-    "mutate:retro": "python3 tools/mutate.py tools/mutations/retro-payments.py"
+    "mutate:retro": "python3 tools/mutate.py tools/mutations/retro-payments.py",
+    "mutate:debttypes": "python3 tools/mutate.py tools/mutations/debt-types.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",

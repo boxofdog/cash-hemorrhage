@@ -2,6 +2,19 @@
 
 ## 1.31.1 (unreleased)
 
+### Added
+- **Chart one kind of debt at a time.** With two or more kinds of debt, the
+  chart under Total debt progress has **All debts · Cards · BNPL · Loans**.
+  Each kind is scaled to its own numbers, so a big car loan no longer flattens
+  the small stuff. Kinds are kept from the next save on; your earlier points
+  stay in **All debts**, and the caption says when a kind starts.
+
+### Changed
+- **A big new debt no longer squashes your history.** When one step dwarfs the
+  rest of the line, the Progress chart scales to the longer side of it and puts
+  the other side on the edge, hollow, with its real figure ("↑ $16,055"). Hover
+  still reads the true number.
+
 ### Fixed
 - **A payment you made before setting up a debt can now be applied.** Set up a
   debt after paying it and the payment used to be stuck: not offered, and the

@@ -6131,17 +6131,41 @@ function candidatePayments(debt, transactions, allDebts, categoryMeta = [], owne
   });
 }
 
+// What's owed, by kind of debt. Saved with each point so the chart can show one
+// kind on its own; a point saved before this has only the total.
+function debtBalancesByType(revolving, installment, transactions = null) {
+  const sum = (list, fn) => round2((list || []).reduce((s, d) => s + fn(d), 0));
+  return {
+    card: sum(revolving, (d) => debtBalance(d, transactions)),
+    plan: sum((installment || []).filter((d) => !isLoan(d)), (d) => debtBalance(d)),
+    loan: sum((installment || []).filter(isLoan), (d) => debtBalance(d))
+  };
+}
+
+const DEBT_TYPE_LABELS = { card: "Cards", plan: "BNPL", loan: "Loans" };
+
+// The points to draw for one kind of debt: its own balance at each saved point
+// that recorded it. "all" is every point's total.
+function debtChartSeries(history, type) {
+  if (!type || type === "all") return (history || []).slice();
+  return (history || [])
+    .filter((h) => h && h.types && Number.isFinite(h.types[type]))
+    .map((h) => ({ date: h.date, total_debt: h.types[type] }));
+}
+
 async function logDebtSnapshot(app, revolving, installment, transactions = null) {
   const total = totalDebt(revolving, installment, transactions);
+  const types = debtBalancesByType(revolving, installment, transactions);
   const history = await readJSON(app, FILES.debtHistory, []);
   const today = todayLocal();
 
   const idx = history.findIndex((h) => h.date === today);
   if (idx >= 0) {
-    if (history[idx].total_debt === total) return history; // nothing changed
+    if (history[idx].total_debt === total && JSON.stringify(history[idx].types) === JSON.stringify(types)) return history; // nothing changed
     history[idx].total_debt = total;
+    history[idx].types = types;
   } else {
-    history.push({ date: today, total_debt: total });
+    history.push({ date: today, total_debt: total, types });
   }
   history.sort((a, b) => (a.date < b.date ? -1 : 1));
   await writeJSON(app, FILES.debtHistory, history);
@@ -6154,6 +6178,31 @@ async function logDebtSnapshot(app, revolving, installment, transactions = null)
 // the same way (the Portfolio tab's). opts: ariaLabel(first, last) for the
 // chart's accessible name, xLabel(date) for the two axis dates, pointLabel(date)
 // for what the hover readout calls a point (data-label), and cls for the svg.
+// A debt added or paid off makes the total jump, and the jump makes everything
+// on the other side of it a sliver. Finds a step that dwarfs the movement on
+// both sides of it, and which side has more points, since that's the one the
+// chart should be scaled to.
+function detectLevelShift(ys) {
+  if (!ys || ys.length < 3) return null;
+  let at = 1;
+  let jump = 0;
+  for (let i = 1; i < ys.length; i++) {
+    const d = Math.abs(ys[i] - ys[i - 1]);
+    if (d > jump) {
+      jump = d;
+      at = i;
+    }
+  }
+  const spread = (a) => (a.length ? Math.max(...a) - Math.min(...a) : 0);
+  const before = ys.slice(0, at);
+  const after = ys.slice(at);
+  // The step has to dwarf the movement on both sides of it (which also makes it
+  // most of the line's height).
+  if (!(jump >= 3 * Math.max(spread(before), spread(after), 1))) return null;
+  // A tie goes to the later side: that's where you are now.
+  return { index: at, coreBefore: before.length > after.length };
+}
+
 function buildDebtChart(history, projection, opts = {}) {
   const W = 640;
   const H = 220;
@@ -6185,16 +6234,24 @@ function buildDebtChart(history, projection, opts = {}) {
   // a chart that doesn't start at zero should be asked for.
   let minY = 0;
   let maxY = dataMax;
+  // With a big step in the line, the axis fits the longer side of it and the
+  // other side is drawn on the edge (hollow, with its real figure), so one new
+  // debt doesn't shrink everything before it.
+  let shift = null;
   if (opts.zoom) {
-    const lo = Math.min(...allY);
-    const pad = (dataMax - lo) * 0.12 || dataMax * 0.1 || 1;
+    shift = projPts.length ? null : detectLevelShift(pts.map((p) => p.y));
+    const core = shift ? (shift.coreBefore ? pts.slice(0, shift.index) : pts.slice(shift.index)).map((p) => p.y) : allY;
+    const coreHi = Math.max(...core);
+    const lo = Math.min(...core);
+    const pad = (coreHi - lo) * 0.12 || coreHi * 0.1 || 1;
     minY = Math.max(0, lo - pad);
-    maxY = dataMax + pad;
+    maxY = coreHi + pad;
   }
+  const isClipped = (p) => !!shift && (p.y > maxY || p.y < minY);
 
   const spanX = maxX - minX || 1;
   const sx = (x) => PAD.left + ((x - minX) / spanX) * plotW;
-  const sy = (y) => PAD.top + plotH - ((y - minY) / (maxY - minY || 1)) * plotH;
+  const sy = (y) => PAD.top + plotH - ((Math.min(Math.max(y, minY), maxY) - minY) / (maxY - minY || 1)) * plotH;
 
   const line = (arr) => arr.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(" ");
 
@@ -6230,11 +6287,24 @@ function buildDebtChart(history, projection, opts = {}) {
   const dots = pts
     .map(
       (p) =>
-        `<circle class="budget-chart-pt" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3" fill="var(--text-accent, #7b6cd9)" data-date="${p.date}" data-value="${p.y.toFixed(2)}"` +
+        `<circle class="budget-chart-pt${isClipped(p) ? " budget-chart-pt-off" : ""}" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3" ` +
+        (isClipped(p) ? `fill="var(--background-primary)" stroke="var(--text-accent, #7b6cd9)" stroke-width="2"` : `fill="var(--text-accent, #7b6cd9)"`) +
+        ` data-date="${p.date}" data-value="${p.y.toFixed(2)}"` +
         (opts.pointLabel ? ` data-label="${escapeAttr(opts.pointLabel(p.date))}"` : "") +
         "/>"
     )
     .join("");
+  // The off-scale side says where it really is, once: the latest such point.
+  const off = pts.filter(isClipped);
+  const offNote = off.length
+    ? (() => {
+        const p = off[off.length - 1];
+        const up = p.y > maxY;
+        const x = Math.min(Math.max(sx(p.x) - 8, PAD.left + 40), W - PAD.right);
+        const y = up ? PAD.top + 14 : PAD.top + plotH - 8;
+        return `<text class="budget-chart-off" x="${x.toFixed(1)}" y="${y}" text-anchor="end" font-size="10" fill="var(--text-muted)">${up ? "\u2191" : "\u2193"} $${Math.round(p.y).toLocaleString()}</text>`;
+      })()
+    : "";
   const projMark = projPts.length
     ? `<circle class="budget-chart-pt" cx="${sx(projPts[1].x).toFixed(1)}" cy="${sy(0).toFixed(1)}" r="0" data-date="${projPts[1].date}" data-value="0.00" data-projected="1"/>`
     : "";
@@ -6258,7 +6328,7 @@ function buildDebtChart(history, projection, opts = {}) {
 
   return (
     `<svg class="budget-debt-chart${opts.cls ? " " + opts.cls : ""}" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" tabindex="0" role="img" aria-label="${label}">` +
-    `${grid}${projPath}${solid}${dots}${projMark}${xLabels}${focusLayer}${hit}</svg>`
+    `${grid}${projPath}${solid}${dots}${offNote}${projMark}${xLabels}${focusLayer}${hit}</svg>`
   );
 }
 
@@ -16192,15 +16262,38 @@ class BudgetDashboardView extends ItemView {
     const history = await readJSON(this.app, FILES.debtHistory, []);
     if (history.length > 0) {
       const progressCard = container.createDiv({ cls: "budget-card budget-progress-card" });
-      progressCard.createEl("h4", { text: "Total debt progress" });
+      // Which kinds of debt you have. With two or more, each can be charted on
+      // its own, scaled to its own numbers.
+      const present = [
+        revolvingDebts.length ? "card" : null,
+        installmentDebts.some((d) => !isLoan(d)) ? "plan" : null,
+        installmentDebts.some(isLoan) ? "loan" : null
+      ].filter(Boolean);
+      const type = present.length >= 2 && present.includes(this.debtChartType) ? this.debtChartType : "all";
+      progressCard.createEl("h4", { text: type === "all" ? "Total debt progress" : `${DEBT_TYPE_LABELS[type]} progress` });
 
-      const projection = projectPayoff(grandTotal, this.lastResult);
+      const controls = progressCard.createDiv({ cls: "budget-debt-chart-controls" });
+      if (present.length >= 2) {
+        const kinds = controls.createDiv({ cls: "budget-segmented" });
+        [["all", "All debts"]].concat(present.map((k) => [k, DEBT_TYPE_LABELS[k]])).forEach(([key, label]) => {
+          const b = kinds.createEl("button", { text: label, cls: `budget-segment${type === key ? " budget-segment-on" : ""}` });
+          b.onclick = () => {
+            if (type === key) return;
+            this.debtChartType = key;
+            this.render();
+          };
+        });
+      }
+
+      // The line out to debt-free is the whole portfolio's pace, so it's only
+      // drawn for the total.
+      const projection = type === "all" ? projectPayoff(grandTotal, this.lastResult) : null;
       // Two views of the same history. The payoff view runs the line out to
       // debt-free, which squeezes the weeks you have actually lived into a
       // sliver; progress shows just those, scaled to fit.
       const view = projection && this.debtChartView === "payoff" ? "payoff" : "progress";
       if (projection) {
-        const toggle = progressCard.createDiv({ cls: "budget-segmented budget-debt-chart-toggle" });
+        const toggle = controls.createDiv({ cls: "budget-segmented budget-debt-chart-toggle" });
         [["progress", "Progress"], ["payoff", "Payoff"]].forEach(([key, label]) => {
           const b = toggle.createEl("button", { text: label, cls: `budget-segment${view === key ? " budget-segment-on" : ""}` });
           b.setAttr("title", key === "progress" ? "Where your balance has gone so far" : "The line out to debt-free");
@@ -16211,29 +16304,37 @@ class BudgetDashboardView extends ItemView {
           };
         });
       }
-      const svg = view === "payoff" ? buildDebtChart(history, projection) : buildDebtChart(history, null, { zoom: true });
+      const series = debtChartSeries(history, type);
+      const svg = !series.length ? null : view === "payoff" ? buildDebtChart(series, projection) : buildDebtChart(series, null, { zoom: true });
       if (svg) {
         const chartWrap = progressCard.createDiv({ cls: "budget-chart-wrap budget-debt-chart-wrap" });
         setSvgContent(chartWrap, svg);
         enableChartHover(chartWrap);
       }
 
-      if (history.length === 1) {
+      if (!series.length) {
+        progressCard.createEl("p", {
+          text: "Nothing saved for this yet \u2014 it fills in as balances change.",
+          cls: "budget-muted"
+        });
+      } else if (series.length === 1) {
         progressCard.createEl("p", {
           text: "Only one data point so far \u2014 the line fills in as balances change over time.",
           cls: "budget-muted"
         });
       } else if (view === "progress") {
-        const first = history[0];
-        const last = history[history.length - 1];
+        const first = series[0];
+        const last = series[series.length - 1];
         const change = round2(first.total_debt - last.total_debt);
         progressCard.createEl("p", {
           text:
-            change > 0.005
+            (change > 0.005
               ? `Down $${change.toFixed(2)} since ${formatShortDate(first.date)}, from $${first.total_debt.toFixed(2)} to $${last.total_debt.toFixed(2)}.`
               : change < -0.005
                 ? `Up $${Math.abs(change).toFixed(2)} since ${formatShortDate(first.date)}, from $${first.total_debt.toFixed(2)} to $${last.total_debt.toFixed(2)}.`
-                : `No change since ${formatShortDate(first.date)}.`,
+                : `No change since ${formatShortDate(first.date)}.`) +
+            // Points saved before the balance was kept by kind can't be split.
+            (type !== "all" && first.date > history[0].date ? " Kept by kind from then." : ""),
           cls: "budget-muted"
         });
       }
@@ -16245,7 +16346,7 @@ class BudgetDashboardView extends ItemView {
             (view === "payoff" ? " Dotted line shows that projection." : ""),
           cls: "budget-muted"
         });
-      } else if (grandTotal > 0) {
+      } else if (type === "all" && grandTotal > 0) {
         progressCard.createEl("p", {
           text: "Run \u2018Enter Paycheck\u2019 to see a projected payoff date based on your current paydown rate.",
           cls: "budget-muted"

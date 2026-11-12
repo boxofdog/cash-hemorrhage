@@ -3604,3 +3604,13 @@ button.budget-filter-chip.budget-filter-chip-on {
 
 /* Tighter segments here so the switch and Manual Add share a row on a phone. */
 .budget-tx-bar .budget-segmented .budget-segment { padding: 0.35em 0.8em; }
+
+/* The debt chart's switches: which kind of debt, then Progress / Payoff. */
+.budget-debt-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0.4em 0 0.6em;
+}
+.budget-debt-chart-controls .budget-debt-chart-toggle { margin: 0; }
