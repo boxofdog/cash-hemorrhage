@@ -55,6 +55,15 @@ all test data is synthetic.
   - A later request added 3-month spending, explicit rent and Insights targets.
   - The user then asked for it rolled back, saying they'd edit that part
     themselves. It stays out.
+  - 1.32.0 made the snapshot say what it is without adding that analysis back:
+    the surplus is labelled "before everyday spending", income is the average
+    of recent paychecks, plans are capped at what's left, and a Data health list
+    leads. An outside review also asked for a typical-discretionary-spending
+    row, a reconciliation against actual spending, a table of categories the
+    surplus doesn't count, and scheduled-vs-actual drift per bill. Those are
+    the same 3-month spending analysis that was rolled back, so they were held
+    for the user to say yes. "Cash not earmarked" was skipped too: it assumes
+    where goals with no linked account keep their money.
 - **Goals linked to a savings account** (1.24.0) are optional. When several
   goals share an account, the user assigns each transfer to a goal.
 - **Loans.**

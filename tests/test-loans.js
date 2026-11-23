@@ -358,7 +358,7 @@ console.log("\n8. The snapshot");
   const s = H.buildFinancialSnapshot({ installmentDebts: [Object.assign(CAR(), { loan_date: T, next_due_date: D(42), balance_anchor: { amount: 25000, date: T } })] }, { todayStr: T });
   const plan = s.plans[0];
   check("a loan's rate, payment and payments left", [plan.apr, plan.installment, plan.monthly, plan.remaining > 70], [7.49, 432.13, 432.13, true]);
-  check("…in the Markdown", H.snapshotMarkdown(s).includes(`| Credit union auto loan | $25,000.00 | 7.49% APR, $432.13 monthly, ${plan.remaining} left | $432.13/mo |`), true);
+  check("…in the Markdown", H.snapshotMarkdown(s).includes(`| Credit union auto loan | $25,000.00 | 7.49% APR, $432.13 monthly, ${plan.remaining} payments left | $432.13/mo |`), true);
   check("…and the CSV's APR column", H.snapshotCSV(s).split("\r\n").find((l) => l.startsWith("Credit union auto loan,")), `Credit union auto loan,25000.00,,,7.49,432.13,${plan.remaining}`);
   const never = H.buildFinancialSnapshot({ installmentDebts: [Object.assign(CAR(), { installment_amount: 100, balance_anchor: { amount: 25000, date: T } })] }, { todayStr: T });
   check("one that never pays off says so, not Infinity", [never.plans[0].remaining, H.snapshotMarkdown(never).includes("never paid off at this payment")], [null, true]);

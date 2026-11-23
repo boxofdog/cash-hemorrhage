@@ -99,10 +99,10 @@ console.log("\n2. Debts");
   check("…the same figure the Debts tab uses", s.cards[0].balance, H.debtBalance(card, transactions));
   check("a paid-off card costs nothing a month", [s.cards[1].balance, s.cards[1].minimum], [0, 0]);
   check("plans at their balance", s.plans.map((p) => p.balance), [r2(544.28 - 23.24), 405.01, 0]);
-  check("…and what each costs a month, by frequency", s.plans.map((p) => p.monthly), [49.48, r2(67.5 * 2.166), 0]);
+  check("…and what each costs a month, by frequency", s.plans.map((p) => p.monthly), [49.48, r2(67.5 * 26 / 12), 0]);
   check("installments left", s.plans.map((p) => p.remaining), [H.remainingInstallments(plans[0]), 7, 0]);
   check("total debt", s.debtTotal, r2(570 + 521.04 + 405.01));
-  check("monthly debt cost: card minimums plus plan payments", s.debtMonthly, r2(40 + 49.48 + 67.5 * 2.166));
+  check("monthly debt cost: card minimums plus plan payments", s.debtMonthly, r2(40 + 49.48 + 67.5 * 26 / 12));
 }
 
 // ===========================================================================
@@ -142,14 +142,14 @@ console.log("\n5. Investments and income");
   const s = build();
   check("each account at its latest statement; one without is listed, uncounted", s.investments.map((i) => [i.name, i.value, i.asOf]), [["Fidelity 401(k)", 56200, "2026-08-31"], ["Roth", null, null]]);
   check("a deleted account's statements aren't counted", s.investedTotal, 56200);
-  check("the latest paycheck: entered beats an older deposit", s.income.paycheck, { amount: 1600, date: D(-8), source: "entered" });
+  check("the latest paycheck: the one you entered, which is the deposit beside it", s.income.paycheck, { amount: 1600, date: D(-8), source: "entered" });
   const s2 = build({ paycheckHistory: [{ date: D(-30), amount: 1500 }] });
   check("a newer deposit filed as Paycheck beats an older entry", s2.income.paycheck, { amount: 1612.4, date: D(-8), source: "deposit" });
   const per = (cadence) => build({}, { paySchedule: { cadence, anchor_date: D(-8) } }).income.monthly;
-  check("monthly income by cadence: weekly ×4.33, biweekly ×2.166, twice a month ×2, monthly ×1", [per("weekly"), per("biweekly"), per("semimonthly"), per("monthly")], [r2(1600 * 4.33), r2(1600 * 2.166), 3200, 1600]);
+  check("monthly income is the average paycheck by cadence: weekly ×52/12, biweekly ×26/12, twice a month ×2, monthly ×1", [per("weekly"), per("biweekly"), per("semimonthly"), per("monthly")], [r2(1590 * 52 / 12), r2(1590 * 26 / 12), 3180, 1590]);
   const outflow = r2(s.debtMonthly + s.billsMonthly + s.subscriptionsMonthly + s.necessitiesMonthly);
   check("outgoings: debt minimums + bills + subscriptions + necessities", s.income.outflow, outflow);
-  check("surplus: income less outgoings", s.income.surplus, r2(r2(1600 * 2.166) - outflow));
+  check("surplus: income less outgoings", s.income.surplus, r2(r2(1590 * 26 / 12) - outflow));
   const none = build({ paycheckHistory: [], transactions: transactions.filter((t) => t.resolved_category !== "Paycheck") }, {});
   check("no paycheck and no schedule: no income or surplus, not zero", [none.income.paycheck, none.income.monthly, none.income.surplus], [null, null, null]);
   const detected = build({}, {});
@@ -161,12 +161,12 @@ console.log("\n6. Markdown");
 {
   const md = H.snapshotMarkdown(build()); if (process.env.SHOWMD) console.log(md);
   check("titled with the date", md.split("\n")[0], "# Financial snapshot — Sep 23, 2026");
-  check("sections in order", [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ["At a glance", "Income & cash flow", "Cash", "Credit", "Savings", "Debts", "Recurring bills", "Subscriptions", "Projected necessities", "Investments"]);
+  check("sections in order", [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ["Data health", "At a glance", "Income & cash flow", "Cash", "Credit", "Savings", "Debts", "Recurring bills", "Subscriptions", "Projected necessities", "Investments"]);
   check("money with thousands separators and cents", /\| Rent \| \$1,450\.00 \| monthly, day 1 \| \$1,450\.00 \|/.test(md), true);
   check("every table has a header rule, amounts right-aligned", /\| Debt \| Balance \| Terms \| Monthly \|\n\| --- \| ---: \| ---: \| ---: \|/.test(md), true);
-  check("totals in bold", /\| \*\*Total\*\* \| \*\*\$1,496\.05\*\* \|  \| \*\*\$235\.68\/mo\*\* \|/.test(md), true);
+  check("totals in bold", /\| \*\*Total\*\* \| \*\*\$1,496\.05\*\* \|  \| \*\*\$235\.73\/mo\*\* \|/.test(md), true);
   check("paid-off debts aren't listed", /Affirm - Toy|Store Card \| \$0/.test(md.split("## Debts")[1].split("##")[0]), false);
-  check("outgoings shown as deductions", /\| Debt minimums \| -\$235\.68 \|/.test(md), true);
+  check("outgoings shown as deductions", /\| Debt minimums \| -\$235\.73 \|/.test(md), true);
   check("a negative surplus reads as a deficit", H.snapshotMoney(-5191.74), "-$5,191.74");
   check("a | in a name can't break the table", H.snapshotTable(["Name", "Amount"], [["A | B", "$1.00"]]).split("\n")[2], "| A \\| B | $1.00 |");
   const bare = H.snapshotMarkdown(H.buildFinancialSnapshot({}, { todayStr: T }));
@@ -183,16 +183,16 @@ console.log("\n7. CSV");
     "Metric,Amount",
     "Account,Type,Balance,Target Goal,Target Date",
     "Lender,Balance,Credit Limit,Available Credit,APR (%),Monthly Min,Remaining Months",
-    "Item,Category,Monthly Cost,Billing Cadence",
+    "Item,Category,Monthly Cost,Billing Cadence,Note",
     "Account,Kind,Value,Statement Date"
   ]);
   check("CRLF throughout, one blank row between blocks", [/[^\r]\n/.test(csv), (csv.match(/\r\n\r\n/g) || []).length], [false, 4]);
   check("every row as wide as its header", blocks.every((b) => b.every((l) => l.replace(/"[^"]*"/g, "x").split(",").length === b[0].split(",").length)), true);
-  check("summary: income, outgoings, surplus, totals", blocks[0].slice(1).map((l) => l.split(",")[0]), ["Latest paycheck", "Paychecks per month", "Estimated monthly income", "Debt minimums (monthly)", "Recurring bills (monthly)", "Subscriptions (monthly)", "Projected necessities (monthly)", "Total monthly outgoings", "Net surplus / deficit (monthly)", "Total cash", "Credit available", "Total debt", "Invested"]);
+  check("summary: income, outgoings, surplus, totals", blocks[0].slice(1).map((l) => l.split(",")[0]), ["Latest paycheck", "Average recent paycheck", "Paychecks per month", "Estimated monthly income", "Debt minimums (monthly)", "Recurring bills (monthly)", "Subscriptions (monthly)", "Projected necessities (monthly)", "Committed monthly outgoings", "Surplus before everyday spending (monthly)", "Total cash", "Credit available", "Total debt", "Invested"]);
   check("outgoings are positive and add up to the total", (() => {
     const v = (m) => Number(find(0, m).split(",")[1]);
-    return [v("Debt minimums (monthly)") > 0, Math.abs(v("Debt minimums (monthly)") + v("Recurring bills (monthly)") + v("Subscriptions (monthly)") + v("Projected necessities (monthly)") - v("Total monthly outgoings")) < 0.011,
-      Math.abs(v("Estimated monthly income") - v("Total monthly outgoings") - v("Net surplus / deficit (monthly)")) < 0.011];
+    return [v("Debt minimums (monthly)") > 0, Math.abs(v("Debt minimums (monthly)") + v("Recurring bills (monthly)") + v("Subscriptions (monthly)") + v("Projected necessities (monthly)") - v("Committed monthly outgoings")) < 0.011,
+      Math.abs(v("Estimated monthly income") - v("Committed monthly outgoings") - v("Surplus before everyday spending (monthly)")) < 0.011];
   })(), [true, true, true]);
   check("no $ or % anywhere: bare numbers", /\$|\d%/.test(csv), false);
   check("a goal: bare target and ISO date", find(1, "Moving fund"), "Moving fund,Savings goal,250.00,3000.00,2026-11-26");
@@ -200,14 +200,14 @@ console.log("\n7. CSV");
   check("an unknown balance is an empty cell", find(1, "Old Savings"), "Old Savings,Savings,,,");
   check("a card: limit, what's left, APR, minimum", find(2, "Capital One Card"), "Capital One Card,570.00,901.00,331.00,29.99,40.00,");
   check("a monthly plan: payments left as months", find(2, "Klarna"), "Klarna,521.04,,,,49.48,11");
-  check("a biweekly plan: its monthly cost, and months to run", find(2, "ZIP - Switch 2"), "ZIP - Switch 2,405.01,,,,146.20,3.2");
+  check("a biweekly plan: its monthly cost, and months to run", find(2, "ZIP - Switch 2"), "ZIP - Switch 2,405.01,,,,146.25,3.2");
   check("paid-off debts and limitless zero cards left out", blocks[2].some((l) => /Kendama|Store Card/.test(l)), false);
   check("row reconciles: limit − balance = available", (() => { const c = find(2, "Capital One Card").split(","); return Math.abs(c[2] - c[1] - c[3]) < 0.001; })(), true);
   check("bills, subscriptions and necessities, tagged", blocks[3].slice(1).map((l) => l.split(",")[1]), ["Bill", "Bill", "Bill", "Subscription", "Necessity", "Necessity"]);
-  check("a bill's cadence stays one unquoted cell", find(3, "Rent"), "Rent,Bill,1450.00,Monthly (day 1)");
+  check("a bill's cadence stays one unquoted cell", find(3, "Rent"), "Rent,Bill,1450.00,Monthly (day 1),");
   check("a necessity without a rhythm", find(3, "Pet Bills").split(",")[3], "Irregular");
   check("the block sums to the non-debt outgoings", (() => { const s = build(); return Math.abs(blocks[3].slice(1).reduce((t, l) => t + Number(l.split(",")[2]), 0) - (s.billsMonthly + s.subscriptionsMonthly + s.necessitiesMonthly)) < 0.02; })(), true);
-  check("a negative surplus is a bare negative number", /^Net surplus \/ deficit \(monthly\),-\d+\.\d\d$/m.test(H.snapshotCSV(build({ paycheckHistory: [{ date: D(-8), amount: 100 }] })).replace(/\r/g, "")), true);
+  check("a negative surplus is a bare negative number", /^Surplus before everyday spending \(monthly\),-\d+\.\d\d$/m.test(H.snapshotCSV(build({ paycheckHistory: [{ date: D(-8), amount: 100 }] })).replace(/\r/g, "")), true);
   check("quotes are doubled", H.snapshotCSV(H.buildFinancialSnapshot({ fixedExpenses: [{ name: 'The "Big" Bill', amount: 5, due_day_of_month: 1 }] }, { todayStr: T })).includes('"The ""Big"" Bill"'), true);
   const empty = H.snapshotCSV(H.buildFinancialSnapshot({}, { todayStr: T }));
   check("no data: the four blocks, headers only, empty cells for unknowns", [empty.split("\r\n\r\n").length, /Estimated monthly income,\r\n/.test(empty)], [4, true]);

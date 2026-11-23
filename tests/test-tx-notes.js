@@ -22,7 +22,7 @@ const by = Object.fromEntries(files.map((f) => [f.name, f.content]));
 console.log("\n1. The notes");
 check("a note per month, one for undated, and the index", files.map((f) => f.name), ["Transactions 2026-09", "Transactions 2026-08", "Transactions no date", "Transactions"]);
 const sep = by["Transactions 2026-09"];
-check("properties for the month", sep.split("---")[1].trim().split("\n"), ["month: 2026-09", "transactions: 2", "money_in: 2000.00", "money_out: 44.20"]);
+check("properties for the month", sep.split("---")[1].trim().split("\n"), ["month: 2026-09", "transactions: 2", "money_in: 2000.00", "money_out: 44.20", "income_excluding_transfers: 2000.00", "spending_excluding_transfers: 44.20"]);
 check("oldest first, with account names, and a pipe in a merchant doesn't break the table",
   sep.split("\n").filter((l) => l.startsWith("| 2026")),
   ["| 2026-09-01 | PAYROLL \\| ACME | Paycheck | Cal Coast Checking | $2,000.00 |", "| 2026-09-03 | SHELL OIL 123 | Gas | Cal Coast Checking | -$44.20 |"]);

@@ -5343,8 +5343,130 @@ function totalDebt(revolving, installment, transactions = null) {
 // The spending a necessity's monthly rate is measured over.
 const NECESSITY_WINDOW_DAYS = 90;
 
-// How many of each pay or payment cadence land in a month.
-const PER_MONTH = { weekly: 4.33, biweekly: 2.166, semimonthly: 2, monthly: 1 };
+// How many of each pay or payment cadence land in a month: 52 weeks and 26
+// biweekly paychecks a year, spread over 12 months.
+const PER_MONTH = { weekly: 52 / 12, biweekly: 26 / 12, semimonthly: 2, monthly: 1 };
+
+// An entered paycheck and a deposit this close are the same paycheck: it's
+// entered on payday, and the money lands a day or so either side.
+const PAYCHECK_MATCH_DAYS = 3;
+// How many of the latest paychecks the income estimate averages.
+const PAYCHECK_AVERAGE_COUNT = 6;
+// A balance older than this is called out as stale.
+const STALE_BALANCE_DAYS = 7;
+
+// Records what was entered in Enter Paycheck. Entering a period's paycheck again
+// replaces its line instead of adding another for the same day.
+function recordPaycheckEntry(history, entry) {
+  const kept = (history || []).filter((p) => !(p && entry && p.date === entry.date));
+  kept.push(entry);
+  return kept;
+}
+
+// The paychecks on record, newest first, one line each. What you entered and the
+// deposits filed as Paycheck are one paycheck when they're within
+// PAYCHECK_MATCH_DAYS of each other; the amount you entered stands, and the
+// deposit's is kept beside it. `duplicates` counts entries for a day that
+// already had one.
+function mergedPaychecks(entered, transactions, category = "Paycheck") {
+  const byDate = new Map();
+  let entries = 0;
+  (entered || []).forEach((p) => {
+    if (!p || !isISODateString(p.date) || !(Number(p.amount) > 0)) return;
+    entries++;
+    byDate.set(p.date, round2(Number(p.amount)));
+  });
+  const deposits = (transactions || [])
+    .filter((t) => t && t.amount > 0 && isISODateString(t.date) && (t.resolved_category || "") === category)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // Matched nearest first, so a deposit goes to the entry it's closest to.
+  const pairs = [];
+  [...byDate.keys()].sort().forEach((date) => {
+    deposits.forEach((t, i) => {
+      const gap = Math.abs(daysBetween(date, t.date));
+      if (gap <= PAYCHECK_MATCH_DAYS) pairs.push({ date, i, gap });
+    });
+  });
+  pairs.sort((a, b) => a.gap - b.gap || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || a.i - b.i);
+  const taken = new Set();
+  const matched = new Map();
+  pairs.forEach((pr) => {
+    if (matched.has(pr.date) || taken.has(pr.i)) return;
+    matched.set(pr.date, pr.i);
+    taken.add(pr.i);
+  });
+  const rows = [...byDate.keys()].sort().map((date) =>
+    matched.has(date)
+      ? { date, amount: byDate.get(date), source: "both", deposit: round2(deposits[matched.get(date)].amount), depositDate: deposits[matched.get(date)].date }
+      : { date, amount: byDate.get(date), source: "entered" }
+  );
+  deposits.forEach((t, i) => {
+    if (!taken.has(i)) rows.push({ date: t.date, amount: round2(t.amount), source: "deposit" });
+  });
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { rows, duplicates: entries - byDate.size };
+}
+
+// The months in the next year with more paychecks than usual: three for
+// every-other-week pay, five for weekly.
+function extraPaycheckMonths(schedule, todayStr = todayLocal()) {
+  if (!schedule || !PER_MONTH[schedule.cadence]) return [];
+  const usual = Math.floor(PER_MONTH[schedule.cadence]);
+  const [y, mo] = todayStr.split("-").map(Number);
+  const from = `${todayStr.slice(0, 7)}-01`;
+  const to = toLocalISO(new Date(y, mo + 11, 0));
+  const counts = new Map();
+  (paydaysBetween(schedule, addDays(from, -1), to) || []).forEach((d) => counts.set(d.slice(0, 7), (counts.get(d.slice(0, 7)) || 0) + 1));
+  return [...counts.entries()]
+    .filter(([, n]) => n > usual)
+    .map(([key]) => key)
+    .sort();
+}
+
+// The first and last dated rows of the ledger, for saying which months are only
+// part of a month.
+function ledgerCoverage(transactions, todayStr = todayLocal()) {
+  let first = null;
+  let last = null;
+  (transactions || []).forEach((t) => {
+    if (!t || !isISODateString(t.date)) return;
+    if (!first || t.date < first) first = t.date;
+    if (!last || t.date > last) last = t.date;
+  });
+  return { first, last, todayStr };
+}
+
+// What part of a month the ledger covers, or null when it covers all of it. A
+// month the data starts partway through is partial, and so is this month. A past
+// month whose last row falls before its end isn't: nothing was spent, or it was
+// complete.
+function monthCoverage(monthKey, cov) {
+  if (!cov || !cov.first || !/^\d{4}-\d{2}$/.test(monthKey)) return null;
+  const [y, mo] = monthKey.split("-").map(Number);
+  const start = `${monthKey}-01`;
+  const lastDay = new Date(y, mo, 0).getDate();
+  const end = `${monthKey}-${String(lastDay).padStart(2, "0")}`;
+  const from = cov.first > start && cov.first <= end ? cov.first : start;
+  let to = end;
+  if (cov.todayStr >= start && cov.todayStr < end) to = cov.last && cov.last >= start && cov.last < cov.todayStr ? cov.last : cov.todayStr;
+  if (from === start && to === end) return null;
+  return { from, to, days: daysBetween(from, to) + 1, of: lastDay, startsLate: from !== start, endsEarly: to !== end };
+}
+
+function monthCoverageNote(c) {
+  if (!c) return "";
+  const when = c.startsLate && c.endsEarly ? `${formatShortDate(c.from)} to ${formatShortDate(c.to)}` : c.startsLate ? `data starts ${formatShortDate(c.from)}` : `through ${formatShortDate(c.to)}`;
+  return `${when}, ${c.days} of ${c.of} days`;
+}
+
+// Whether a row is a transfer: half of a confirmed pair, one marked as a
+// transfer, or filed under a transfer category. The same test as "Hide
+// transfers" on the Transactions list.
+function transferTester(allTx, categoryMeta = []) {
+  const byId = new Map((allTx || []).filter((t) => t && t.id).map((t) => [t.id, t]));
+  const cats = new Set((categoryMeta || []).filter((c) => c && c.is_transfer).map((c) => c.name));
+  return (t) => isHiddenTransfer(t, byId) || cats.has(t.resolved_category);
+}
 const PAY_CADENCE_NAMES = { weekly: "Weekly", biweekly: "Every 2 weeks", semimonthly: "Twice a month", monthly: "Monthly" };
 
 function snapshotMoney(v) {
@@ -5423,6 +5545,9 @@ function buildFinancialSnapshot(data = {}, { todayStr = todayLocal(), settings =
     const frequency = d.frequency || "monthly";
     const installment = round2(Number(d.installment_amount) || 0);
     const left = balance > 0 ? remainingInstallments(d) : 0;
+    // A month's cost can't be more than what's left to pay: a plan down to its
+    // last payment costs that payment, not a month of them.
+    const perMonth = installment * (PER_MONTH[frequency] || 1);
     return {
       name: debtLabel(d),
       balance,
@@ -5432,7 +5557,8 @@ function buildFinancialSnapshot(data = {}, { todayStr = todayLocal(), settings =
       // interest has no count of payments left.
       apr: isLoan(d) ? snapshotNumber(d.apr) : null,
       remaining: Number.isFinite(left) ? left : null,
-      monthly: balance > 0 ? round2(installment * (PER_MONTH[frequency] || 1)) : 0,
+      monthly: balance > 0 ? round2(Math.min(perMonth, balance)) : 0,
+      capped: balance > 0 && perMonth > balance,
       nextDue: d.next_due_date || null
     };
   });
@@ -5461,10 +5587,31 @@ function buildFinancialSnapshot(data = {}, { todayStr = todayLocal(), settings =
     const k = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     return k.length >= 3 && billNames.some((n) => n.includes(k) || k.includes(n));
   };
+  // What each one's charges ranged over, and credits that came after its last
+  // charge, so a row can say when it doesn't look like a steady subscription.
+  const subAmounts = new Map();
+  transactions.forEach((t) => {
+    if (!t || !(t.amount < 0) || !SUBSCRIPTION_CATEGORIES.includes(String(t.resolved_category || "").toLowerCase())) return;
+    const k = subscriptionGroupKey(t.merchant_raw, rules);
+    if (!subAmounts.has(k)) subAmounts.set(k, []);
+    subAmounts.get(k).push(Math.abs(t.amount));
+  });
+  const loose = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const subscriptions = buildSubscriptionAudit(transactions, data.reviews || [], rules, undefined, { accounts, todayStr })
     .filter((s) => s.status !== "cancel" && !s.phasedOut && !isBill(s.key))
-    .map((s) => ({ name: s.key, cadence: s.cadenceLabel, latest: s.latestAmount, monthly: s.monthlyEstimate, status: s.status }));
+    .map((s) => {
+      const flags = [];
+      if (s.cadenceSource === "assumed") flags.push({ kind: "one charge" });
+      const credit = transactions
+        .filter((t) => t && t.amount > 0 && t.date && t.date >= s.latestDate && (subscriptionGroupKey(t.merchant_raw, rules) === s.key || (loose(s.key).length >= 5 && loose(t.merchant_raw).includes(loose(s.key)))))
+        .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      if (credit) flags.push({ kind: "credit", date: credit.date });
+      const seen = subAmounts.get(s.key) || [];
+      if (seen.length >= 3 && Math.max(...seen) > Math.min(...seen) * 1.5) flags.push({ kind: "varies", low: round2(Math.min(...seen)), high: round2(Math.max(...seen)) });
+      return { name: s.key, cadence: s.cadenceLabel, latest: s.latestAmount, monthly: s.monthlyEstimate, status: s.status, flags };
+    });
   const subscriptionsMonthly = sum(subscriptions, "monthly");
+  const subscriptionsFlaggedMonthly = sum(subscriptions.filter((s) => s.flags.length), "monthly");
 
   // Irregular necessities (gas, pet food): the typical purchase and how often
   // it comes, as the dashboard projects them, and what they actually cost a
@@ -5504,20 +5651,51 @@ function buildFinancialSnapshot(data = {}, { todayStr = todayLocal(), settings =
   });
   const investedTotal = sum(investments.filter((i) => i.value != null), "value");
 
-  // Income: the latest paycheck — the one entered with Enter Paycheck, or the
-  // latest deposit filed as Paycheck, whichever is newer — at the pay cadence.
-  const entered = (data.paycheckHistory || [])
-    .filter((p) => p && p.date && Number(p.amount) > 0)
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .slice(-1)[0];
-  const deposit = findLatestPaycheck(transactions);
-  let paycheck = null;
-  if (entered && (!deposit || entered.date >= deposit.date)) paycheck = { amount: round2(Number(entered.amount)), date: entered.date, source: "entered" };
-  else if (deposit) paycheck = { amount: round2(deposit.amount), date: deposit.date, source: "deposit" };
+  // Income: the paychecks on record (entered in Enter Paycheck or deposited and
+  // filed as Paycheck, each once), averaged over the latest few at the pay
+  // cadence. One check is rarely the usual one.
+  const { rows: paychecks, duplicates: duplicatePaychecks } = mergedPaychecks(data.paycheckHistory, transactions);
+  const newest = paychecks[0] || null;
+  const paycheck = newest ? { amount: newest.amount, date: newest.date, source: newest.source === "deposit" ? "deposit" : "entered" } : null;
+  const recent = paychecks.slice(0, PAYCHECK_AVERAGE_COUNT);
+  const average = recent.length >= 2
+    ? {
+        count: recent.length,
+        amount: round2(recent.reduce((s, p) => s + p.amount, 0) / recent.length),
+        low: Math.min(...recent.map((p) => p.amount)),
+        high: Math.max(...recent.map((p) => p.amount))
+      }
+    : null;
   const schedule = resolvePaySchedule(settings, transactions);
   const cadence = schedule && PER_MONTH[schedule.cadence] ? schedule.cadence : null;
-  const monthlyIncome = paycheck && cadence ? round2(paycheck.amount * PER_MONTH[cadence]) : null;
+  const basis = average ? average.amount : paycheck ? paycheck.amount : null;
+  const monthlyIncome = basis != null && cadence ? round2(basis * PER_MONTH[cadence]) : null;
   const monthlyOutflow = round2(debtMonthly + billsMonthly + subscriptionsMonthly + necessitiesMonthly);
+  const extraMonths = cadence ? extraPaycheckMonths(schedule, todayStr) : [];
+
+  // The oldest date behind a figure that mixes several accounts' dates.
+  const oldest = (dates) => dates.filter(Boolean).sort()[0] || null;
+  const cashAsOf = oldest(cash.filter((c) => c.balance != null).map((c) => c.asOf));
+  const investedAsOf = oldest(investments.filter((i) => i.value != null).map((i) => i.asOf));
+
+  // Things that make the figures less certain, for the top of the snapshot.
+  const health = [];
+  const cov = ledgerCoverage(transactions, todayStr);
+  const partial = availableMonths(transactions)
+    .slice()
+    .reverse()
+    .map((mo) => ({ mo, note: monthCoverageNote(monthCoverage(mo.key, cov)) }))
+    .filter((x) => x.note);
+  if (partial.length) health.push(`Partial months: ${partial.map((x) => `${x.mo.label}: ${x.note}`).join("; ")}.`);
+  const stale = cash.filter((c) => c.balance != null && c.asOf && daysBetween(c.asOf, todayStr) > STALE_BALANCE_DAYS);
+  if (stale.length) health.push(`Balances over a week old: ${stale.map((c) => `${c.name} (${formatShortDate(c.asOf)})`).join(", ")}.`);
+  const over = credit.filter((c) => c.limit != null && c.balance > c.limit);
+  if (over.length) health.push(`Over the credit limit: ${over.map((c) => c.name).join(", ")}.`);
+  const noted = subscriptions.filter((s) => s.flags.length).length;
+  if (noted) health.push(`${noted} subscription${noted === 1 ? "" : "s"} with a note: see Subscriptions.`);
+  if (duplicatePaychecks) health.push(`${duplicatePaychecks} paycheck ${duplicatePaychecks === 1 ? "entry" : "entries"} repeated a day already entered, counted once.`);
+  const uncategorized = transactions.filter((t) => t && t.date && t.date > since && t.date <= todayStr && !(t.override_label) && (!t.resolved_category || t.resolved_category === "Uncategorized")).length;
+  if (uncategorized) health.push(`${uncategorized} transaction${uncategorized === 1 ? "" : "s"} in the last ${NECESSITY_WINDOW_DAYS} days ${uncategorized === 1 ? "is" : "are"} uncategorized.`);
 
   return {
     date: todayStr,
@@ -5535,12 +5713,19 @@ function buildFinancialSnapshot(data = {}, { todayStr = todayLocal(), settings =
     billsMonthly,
     subscriptions,
     subscriptionsMonthly,
+    subscriptionsFlaggedMonthly,
     necessities,
     necessitiesMonthly,
     investments,
     investedTotal,
+    cashAsOf,
+    investedAsOf,
+    paychecks,
+    health,
     income: {
       paycheck,
+      average,
+      extraMonths,
       cadence,
       cadenceInferred: !!(schedule && schedule.inferred),
       monthly: monthlyIncome,
@@ -5569,17 +5754,21 @@ function snapshotMarkdown(snap, { only = null } = {}) {
   const out = [];
   if (!only) out.push(`# Financial snapshot — ${formatChartDate(snap.date)}`, "");
   const inc = snap.income;
+  // What makes the figures below less certain, so it's read first.
+  if (!only && snap.health && snap.health.length) {
+    out.push("## Data health", "", ...snap.health.map((h) => `- ${h}`), "");
+  }
   if (want("glance")) {
     out.push("## At a glance", "");
     out.push(
-      snapshotTable(["", "Amount"], [
-        ["Cash on hand", m(snap.cashTotal)],
-        ["Credit available", m(snap.creditAvailable)],
-        ["Total debt", m(snap.debtTotal)],
-        ["Invested (latest statements)", m(snap.investedTotal)],
-        ["Estimated monthly income", inc.monthly != null ? m(inc.monthly) : "—"],
-        ["Estimated monthly outgoings", m(inc.outflow)]
-      ], ["Net surplus / deficit per month", inc.surplus != null ? m(inc.surplus) : "—"]),
+      snapshotTable(["", "Amount", "As of"], [
+        ["Cash on hand", m(snap.cashTotal), snap.cashAsOf ? d(snap.cashAsOf) : ""],
+        ["Credit available", m(snap.creditAvailable), ""],
+        ["Total debt", m(snap.debtTotal), ""],
+        ["Invested (latest statements)", m(snap.investedTotal), snap.investedAsOf ? d(snap.investedAsOf) : ""],
+        ["Estimated monthly income", inc.monthly != null ? m(inc.monthly) : "—", ""],
+        ["Committed monthly outgoings", m(inc.outflow), ""]
+      ], ["Surplus before everyday spending", inc.surplus != null ? m(inc.surplus) : "—", ""]),
       ""
     );
   }
@@ -5589,13 +5778,15 @@ function snapshotMarkdown(snap, { only = null } = {}) {
     out.push(
       snapshotTable(["", "Amount"], [
         ["Latest paycheck", inc.paycheck ? `${m(inc.paycheck.amount)} (${d(inc.paycheck.date)})` : "none recorded"],
+        inc.average ? [`Average of the last ${inc.average.count} paychecks`, `${m(inc.average.amount)} (${m(inc.average.low)} to ${m(inc.average.high)})`] : null,
         ["Pay cadence", inc.cadence ? PAY_CADENCE_NAMES[inc.cadence] + (inc.cadenceInferred ? " (detected)" : "") : "not set"],
+        inc.extraMonths && inc.extraMonths.length ? ["Months with an extra paycheck", inc.extraMonths.map(monthLabel).join(", ")] : null,
         ["Estimated monthly net income", inc.monthly != null ? m(inc.monthly) : "—"],
         ["Debt minimums", `-${m(snap.debtMonthly)}`],
         ["Recurring bills", `-${m(snap.billsMonthly)}`],
         ["Subscriptions", `-${m(snap.subscriptionsMonthly)}`],
         ["Projected necessities", `-${m(snap.necessitiesMonthly)}`]
-      ], ["Net surplus / deficit", inc.surplus != null ? m(inc.surplus) : "—"]),
+      ].filter(Boolean), ["Surplus before everyday spending", inc.surplus != null ? m(inc.surplus) : "—"]),
       ""
     );
   }
@@ -5642,8 +5833,8 @@ function snapshotMarkdown(snap, { only = null } = {}) {
       ...snap.plans.filter((p) => p.balance > 0).map((p) => [
         p.name,
         m(p.balance),
-        `${p.apr != null ? `${p.apr}% APR, ` : ""}${m(p.installment)} ${p.frequency}, ${p.remaining != null ? `${p.remaining} left` : "never paid off at this payment"}`,
-        `${m(p.monthly)}/mo`
+        `${p.apr != null ? `${p.apr}% APR, ` : ""}${m(p.installment)} ${p.frequency}, ${p.remaining != null ? `${p.remaining} payment${p.remaining === 1 ? "" : "s"} left` : "never paid off at this payment"}`,
+        `${m(p.monthly)}/mo${p.capped ? " (all that's left)" : ""}`
       ])
     ];
     out.push(debtRows.length ? snapshotTable(["Debt", "Balance", "Terms", "Monthly"], debtRows, ["Total", m(snap.debtTotal), "", `${m(snap.debtMonthly)}/mo`]) : "_No debts tracked._", "");
@@ -5658,9 +5849,14 @@ function snapshotMarkdown(snap, { only = null } = {}) {
 
   if (want("subscriptions")) {
     out.push("## Subscriptions", "");
+    const anyNote = snap.subscriptions.some((s) => s.flags && s.flags.length);
+    const note = (s) => (s.flags || []).map((f) => (f.kind === "credit" ? `credit ${d(f.date)}, may be cancelled` : f.kind === "varies" ? `amounts vary ${m(f.low)} to ${m(f.high)}` : "one charge, counted monthly")).join("; ");
     out.push(snap.subscriptions.length
-      ? snapshotTable(["Service", "Cadence", "Last charge", "Monthly"], snap.subscriptions.map((s) => [s.name, s.cadence, m(s.latest), m(s.monthly)]), ["Total", "", "", m(snap.subscriptionsMonthly)])
+      ? anyNote
+        ? snapshotTable(["Service", "Cadence", "Last charge", "Monthly", "Note"], snap.subscriptions.map((s) => [s.name, s.cadence, m(s.latest), m(s.monthly), note(s)]), ["Total", "", "", m(snap.subscriptionsMonthly), ""])
+        : snapshotTable(["Service", "Cadence", "Last charge", "Monthly"], snap.subscriptions.map((s) => [s.name, s.cadence, m(s.latest), m(s.monthly)]), ["Total", "", "", m(snap.subscriptionsMonthly)])
       : "_No active subscriptions._", "");
+    if (anyNote) out.push(`_Rows with a note come to ${m(snap.subscriptionsFlaggedMonthly)} a month of the total._`, "");
   }
 
   if (want("necessities")) {
@@ -5681,7 +5877,7 @@ function snapshotMarkdown(snap, { only = null } = {}) {
     }
   }
 
-  if (!only) out.push("_Monthly figures are estimates: pay × paychecks a month, bills and debts at their scheduled amounts, subscriptions from their usual charge and spacing, and necessities at the last 90 days' rate._");
+  if (!only) out.push("_Monthly figures are estimates: your recent paychecks averaged × paychecks a month, bills and debts at their scheduled amounts, subscriptions from their usual charge and spacing, and necessities at the last 90 days' rate. Groceries, eating out, shopping and other everyday spending aren't in the committed outgoings, so the surplus is before that spending._");
   return out.join("\n") + "\n";
 }
 
@@ -5701,14 +5897,15 @@ function snapshotCSV(snap) {
   blocks.push([
     ["Metric", "Amount"],
     ["Latest paycheck", n(inc.paycheck && inc.paycheck.amount)],
+    ["Average recent paycheck", n(inc.average && inc.average.amount)],
     ["Paychecks per month", inc.cadence ? rate(PER_MONTH[inc.cadence]) : ""],
     ["Estimated monthly income", n(inc.monthly)],
     ["Debt minimums (monthly)", n(snap.debtMonthly)],
     ["Recurring bills (monthly)", n(snap.billsMonthly)],
     ["Subscriptions (monthly)", n(snap.subscriptionsMonthly)],
     ["Projected necessities (monthly)", n(snap.necessitiesMonthly)],
-    ["Total monthly outgoings", n(inc.outflow)],
-    ["Net surplus / deficit (monthly)", n(inc.surplus)],
+    ["Committed monthly outgoings", n(inc.outflow)],
+    ["Surplus before everyday spending (monthly)", n(inc.surplus)],
     ["Total cash", n(snap.cashTotal)],
     ["Credit available", n(snap.creditAvailable)],
     ["Total debt", n(snap.debtTotal)],
@@ -5758,10 +5955,11 @@ function snapshotCSV(snap) {
   // holds every non-debt outgoing the surplus counts.
   const cap = (t) => (t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : "");
   blocks.push([
-    ["Item", "Category", "Monthly Cost", "Billing Cadence"],
-    ...snap.bills.map((b) => [b.name, "Bill", n(b.monthly), cap(b.cadence).replace(/^Monthly, day (.+)$/, "Monthly (day $1)")]),
-    ...snap.subscriptions.map((s) => [s.name, "Subscription", n(s.monthly), cap(s.cadence)]),
-    ...snap.necessities.map((x) => [x.name, "Necessity", n(x.monthly), x.everyDays != null ? `Every ${x.everyDays} day${x.everyDays === 1 ? "" : "s"}` : "Irregular"])
+    ["Item", "Category", "Monthly Cost", "Billing Cadence", "Note"],
+    ...snap.bills.map((b) => [b.name, "Bill", n(b.monthly), cap(b.cadence).replace(/^Monthly, day (.+)$/, "Monthly (day $1)"), ""]),
+    // Plain words and bare numbers: no $ in this file.
+    ...snap.subscriptions.map((s) => [s.name, "Subscription", n(s.monthly), cap(s.cadence), (s.flags || []).map((f) => (f.kind === "credit" ? `credit ${f.date}` : f.kind === "varies" ? `amounts vary ${n(f.low)} to ${n(f.high)}` : "one charge")).join("; ")]),
+    ...snap.necessities.map((x) => [x.name, "Necessity", n(x.monthly), x.everyDays != null ? `Every ${x.everyDays} day${x.everyDays === 1 ? "" : "s"}` : "Irregular", ""])
   ]);
 
   // 5. Investments, each at its latest statement.
@@ -5786,7 +5984,9 @@ function snapshotCSV(snap) {
 // history can be searched, linked and queried from inside Obsidian. It is a
 // read-only copy: the plugin never reads these notes back, and every export
 // rewrites them. Pure so a test can check the notes without a vault.
-function buildTransactionNotes(transactions, accounts = []) {
+function buildTransactionNotes(transactions, accounts = [], { categoryMeta = [], todayStr = todayLocal() } = {}) {
+  const isTransfer = transferTester(transactions, categoryMeta);
+  const cov = ledgerCoverage(transactions, todayStr);
   const accountName = new Map((accounts || []).filter((a) => a && a.id).map((a) => [a.id, accountLabel(a)]));
   const NOTE_WARNING = "Made by Budget Tracker. Changes here are overwritten the next time you export.";
   const byMonth = new Map();
@@ -5802,20 +6002,30 @@ function buildTransactionNotes(transactions, accounts = []) {
     }
   });
 
+  // In and out, and the same without transfers: money moved between your own
+  // accounts and card payments are in the first and not the second.
   const totals = (list) => {
     let moneyIn = 0;
     let moneyOut = 0;
+    let incomeIn = 0;
+    let spendOut = 0;
     list.forEach((t) => {
       const a = Number(t.amount) || 0;
-      if (a > 0) moneyIn += a;
-      else moneyOut -= a;
+      const own = isTransfer(t);
+      if (a > 0) {
+        moneyIn += a;
+        if (!own) incomeIn += a;
+      } else {
+        moneyOut -= a;
+        if (!own) spendOut -= a;
+      }
     });
-    return { moneyIn: round2(moneyIn), moneyOut: round2(moneyOut) };
+    return { moneyIn: round2(moneyIn), moneyOut: round2(moneyOut), incomeIn: round2(incomeIn), spendOut: round2(spendOut) };
   };
   const row = (t) => [
     t.date || "no date",
     `${t.merchant_raw || "—"}${t.pending ? " (pending)" : ""}`,
-    t.override_label || t.resolved_category || "Uncategorized",
+    (t.override_label || t.resolved_category || "Uncategorized") + (isTransfer(t) ? " (transfer)" : ""),
     t.account_id ? accountName.get(t.account_id) || t.account_id : "—",
     snapshotMoney(t.amount)
   ];
@@ -5828,7 +6038,8 @@ function buildTransactionNotes(transactions, accounts = []) {
   const indexRows = [];
   [...byMonth.keys()].sort().reverse().forEach((key) => {
     const list = sorted(byMonth.get(key));
-    const { moneyIn, moneyOut } = totals(list);
+    const { moneyIn, moneyOut, incomeIn, spendOut } = totals(list);
+    const part = monthCoverage(key, cov);
     files.push({
       name: noteName(key),
       content: [
@@ -5837,10 +6048,15 @@ function buildTransactionNotes(transactions, accounts = []) {
         `transactions: ${list.length}`,
         `money_in: ${moneyIn.toFixed(2)}`,
         `money_out: ${moneyOut.toFixed(2)}`,
+        `income_excluding_transfers: ${incomeIn.toFixed(2)}`,
+        `spending_excluding_transfers: ${spendOut.toFixed(2)}`,
+        ...(part ? [`covers: ${part.from} to ${part.to}`] : []),
         "---",
         `# Transactions ${monthLabel(key)}`,
         "",
         `${list.length} transaction${list.length === 1 ? "" : "s"} · in ${snapshotMoney(moneyIn)} · out ${snapshotMoney(moneyOut)}`,
+        `Without transfers: in ${snapshotMoney(incomeIn)} · out ${snapshotMoney(spendOut)}`,
+        ...(part ? ["", `Partial month: ${monthCoverageNote(part)}`] : []),
         "",
         snapshotTable(head, list.map(row)),
         "",
@@ -5899,7 +6115,7 @@ function exportNote(title, body, todayStr) {
 // Budget/exports. Pure: `data` is what readExportData returns.
 function buildDataNotes(kind, data, { todayStr = todayLocal(), settings = {} } = {}) {
   if (kind === "transactions") {
-    return buildTransactionNotes(data.transactions, data.accounts).map((f) => ({ path: `Transactions/${f.name}.md`, content: f.content }));
+    return buildTransactionNotes(data.transactions, data.accounts, { categoryMeta: data.categoryMeta, todayStr }).map((f) => ({ path: `Transactions/${f.name}.md`, content: f.content }));
   }
   const snap = buildFinancialSnapshot(data, { todayStr, settings });
   const sections = (keys) => snapshotMarkdown(snap, { only: keys }).trimEnd().split("\n");
@@ -5916,10 +6132,11 @@ function buildDataNotes(kind, data, { todayStr = todayLocal(), settings = {} } =
   if (kind === "bills") return one("Bills and subscriptions", sections(["bills", "subscriptions", "necessities"]));
 
   if (kind === "income") {
-    const history = (data.paycheckHistory || []).filter((p) => p && p.date && Number(p.amount) > 0).sort((a, b) => (a.date < b.date ? 1 : -1));
     const body = sections(["income"]);
-    if (history.length) {
-      body.push("", "## Paychecks you entered", "", snapshotTable(["Date", "Amount"], history.map((p) => [p.date, snapshotMoney(p.amount)])));
+    if (snap.paychecks.length) {
+      // One line per paycheck: what you entered and the deposit are the same one.
+      const source = (p) => (p.source === "both" ? (p.deposit !== p.amount ? `entered, deposit ${snapshotMoney(p.deposit)}` : "entered + deposit") : p.source);
+      body.push("", "## Paychecks", "", snapshotTable(["Date", "Amount", "Source"], snap.paychecks.map((p) => [p.date, snapshotMoney(p.amount), source(p)])));
     }
     return one("Income", body);
   }
@@ -5934,7 +6151,7 @@ function buildDataNotes(kind, data, { todayStr = todayLocal(), settings = {} } =
         label.get(s.account_id) || s.account_id || "—",
         s.statement_end,
         s.beginning_value != null ? snapshotMoney(s.beginning_value) : "—",
-        s.contributions != null ? snapshotMoney(s.contributions) : "—",
+        s.contributions != null ? snapshotMoney(s.contributions) : "not tracked",
         snapshotMoney(s.ending_value)
       ]);
     const body = sections(["investments"]);
@@ -5945,12 +6162,15 @@ function buildDataNotes(kind, data, { todayStr = todayLocal(), settings = {} } =
   if (kind === "spending") {
     const meta = data.categoryMeta || [];
     const body = [];
+    const cov = ledgerCoverage(data.transactions, todayStr);
     availableMonths(data.transactions || []).forEach((mo) => {
       const { totals, transferTotal } = categorySpendTotals(transactionsInMonth(data.transactions, mo.key), meta);
       const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
       if (!entries.length && !transferTotal) return;
       const total = round2(entries.reduce((s, [, v]) => s + v, 0));
+      const part = monthCoverageNote(monthCoverage(mo.key, cov));
       body.push(`## ${mo.label}`, "");
+      if (part) body.push(`_Partial month: ${part}._`, "");
       body.push(entries.length
         ? snapshotTable(["Category", "Spent", "Share"], entries.map(([c, v]) => [c, snapshotMoney(round2(v)), total > 0 ? `${Math.round((v / total) * 100)}%` : "—"]), ["Total", snapshotMoney(total), ""])
         : "_No spending._");
@@ -20388,8 +20608,8 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
           checkingBalanceSource: kept ? checkingAcct.balance_source || null : "paycheck"
         };
 
-        const history = await readJSON(this.app, FILES.paycheckHistory, []);
-        history.push({ date: periodStartStr, amount: paycheckAmount, alreadyDeposited, nextPaydayStr });
+        // A period's paycheck entered again replaces its line, not adds a copy.
+        const history = recordPaycheckEntry(await readJSON(this.app, FILES.paycheckHistory, []), { date: periodStartStr, amount: paycheckAmount, alreadyDeposited, nextPaydayStr });
         await writeJSON(this.app, FILES.paycheckHistory, history);
 
         await this.activateView();

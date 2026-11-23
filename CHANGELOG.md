@@ -23,6 +23,49 @@
   the next due date. Until you press it, the fund keeps holding the money
   back. If the payment came out of the savings account, that comes off what's
   saved there too.
+- **Data health at the top of the snapshot.** A short list of what makes the
+  figures less certain: partial months, balances over a week old, a card over
+  its limit, paycheck entries repeated for a day, uncategorized transactions
+  from the last 90 days, and subscriptions with a note. With nothing to report,
+  there's no list.
+- **Subscription notes.** A row says when it doesn't look like a steady
+  subscription: one charge only (counted as monthly), a credit after the last
+  charge (it may be cancelled), or amounts that vary a lot. The totals still
+  match the Subscriptions tab, and a line under the table says how much of the
+  total is in rows with a note.
+- **Partial months are labelled.** Spending by month and the monthly
+  transaction notes say when a month isn't whole: "through Nov 22, 22 of 30
+  days", or "data starts May 18".
+- **Income and spending without transfers.** Each monthly transaction note
+  adds them beside the totals (money in and out count transfers and card
+  payments), and marks transfer rows.
+- **As-of dates** beside Cash on hand and Invested in At a glance, since they
+  come from different days.
+- **Months with an extra paycheck** in Income: the next year's three-paycheck
+  months for every-other-week pay, five-paycheck months for weekly.
+
+### Changed
+- **The surplus says what it leaves out.** "Estimated monthly outgoings" is now
+  **Committed monthly outgoings**, and "Net surplus / deficit" is **Surplus
+  before everyday spending**. The closing note says groceries, eating out and
+  shopping aren't in it. The CSV uses the same labels.
+- **Income is your last six paychecks averaged,** with the range, not the
+  latest one alone. In the Income export, **Paychecks** is one list with each
+  paycheck once: what you entered and its deposit (within 3 days) are the same
+  line, and a deposit you never entered is listed too.
+- **A month is 26/12 biweekly or 52/12 weekly paychecks** (it was 2.166 and
+  4.33), so plan costs move by a few cents.
+- **The Subscriptions block of the CSV has a Note column,** and the summary has
+  an **Average recent paycheck** row.
+- **Portfolio contributions** say "not tracked" when a statement has none.
+
+### Fixed
+- **A plan can't cost more a month than what's left of it.** A plan with one
+  $130 biweekly payment left counted as $281.58 a month; it's $130, and the
+  Debts table says "1 payment left".
+- **Enter Paycheck no longer adds a line each time.** Entering a pay period's
+  paycheck again replaces its line. Repeats already in your history are
+  counted once in the export.
 
 ## 1.31.1
 

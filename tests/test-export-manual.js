@@ -34,7 +34,7 @@ console.log("\n1. Notes for one kind of data");
 check("the kinds on offer", H.EXPORT_KINDS.map((k) => k.label), ["Transactions", "Spending by month", "Debts", "Income", "Cash and credit", "Savings goals", "Bills and subscriptions", "Portfolio"]);
 check("debts: one note, no repeated heading, a table of the plan", [paths("debts"), /^# Debts\n\n\| Debt/m.test(body("debts")), body("debts").includes("Affirm")], [["Debts.md"], true, true]);
 check("every note says it's a copy", H.EXPORT_KINDS.every((k) => H.buildDataNotes(k.key, data, { todayStr: "2026-10-08" }).every((f) => f.content.includes("Changes here are overwritten"))), true);
-check("income: the paycheck and the history", [body("income").includes("Latest paycheck"), body("income").includes("Paychecks you entered"), body("income").includes("| 2026-09-01 | $2,000.00 |")], [true, true, true]);
+check("income: the paycheck and the history", [body("income").includes("Latest paycheck"), body("income").includes("## Paychecks"), body("income").includes("| 2026-09-01 | $2,000.00 |")], [true, true, true]);
 check("portfolio: latest value and the statement history", [body("portfolio").includes("HSA"), body("portfolio").includes("| HSA | 2026-09-30 | $1,000.00 | $100.00 | $1,150.00 |")], [true, true]);
 check("spending: by month, transfers left out and said so", [body("spending").includes("## September 2026"), body("spending").includes("| Gas | $40.00 | 100% |"), body("spending").includes("not counted above: $100.00")], [true, true, true]);
 check("bills and subscriptions: the bill is there", body("bills").includes("Fiber Net"), true);
