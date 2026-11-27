@@ -177,25 +177,7 @@ console.log("\n5. Taking a payment back off a debt");
   check("an extra-toward-principal flag stays on the entry, and undoing it takes the whole entry", [extra.applied_payments[0].extra, H.undoAppliedPayment(extra, 0, "loan").ok, extra.applied_payments.length], [true, true, 0]);
 }
 
-console.log("\n6. The Applied payments window");
-{
-  const debt = { id: "b1", provider: "Affirm", installment_amount: 30, applied_payments: [{ tx_id: "t1", amount: 30, date: "2026-10-01" }, { tx_id: "gone", amount: 12.5, date: "2026-10-05", extra: true }, { amount: 7, date: "2026-10-03" }] };
-  const m = new H.AppliedPaymentsModal({}, debt, [tx("t1", "2026-10-01", -30, "AFFIRM PAYMENT")], [], async (i) => { debt.applied_payments = debt.applied_payments.filter((_, k) => k !== i); return debt; });
-  m.onOpen();
-  const rows = byCls(m.contentEl, "budget-apply-row");
-  check("newest first, with what each was", rows.map((r) => text(r).replace(/ Undo$/, "")), [
-    "(transaction deleted) 2026-10-05 extra toward principal $12.50", "Typed in 2026-10-03 $7.00", "AFFIRM 2026-10-01 $30.00"]);
-  await button(rows[0], "Undo").onclick();
-  check("Undo takes one off and redraws", [debt.applied_payments.length, byCls(m.contentEl, "budget-apply-row").length], [2, 2]);
-  const shown = byCls(m.contentEl, "budget-apply-row").map((r) => text(r));
-  check("and it was the right one", shown.some((s) => s.includes("12.50")), false);
-  debt.applied_payments = [];
-  const none = new H.AppliedPaymentsModal({}, debt, [], [], async () => null);
-  none.onOpen();
-  check("nothing applied says so", text(none.contentEl).includes("Nothing applied."), true);
-}
-
-console.log("\n7. The Debts menu");
+console.log("\n6. The Debts menu");
 {
   const store = { [F.closedLoans]: "[]", [F.debtHistory]: "[]" };
   const v = Object.create(H.BudgetDashboardView.prototype);

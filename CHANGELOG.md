@@ -43,6 +43,12 @@
   come from different days.
 - **Months with an extra paycheck** in Income: the next year's three-paycheck
   months for every-other-week pay, five-paycheck months for weekly.
+- **Payments applied, in a list under each debt.** "4 payments applied" under a
+  debt opens the list. Each payment has **Edit** (amount and date, and for a
+  loan whether it was extra), **Move to…** (another debt of the same kind: plan
+  to plan, card to card, loan to loan) and **Unapply**. A moved payment keeps
+  its transaction, the first debt's due date goes back if that payment had
+  moved it, and the other debt moves on if it now covers its installment.
 
 ### Changed
 - **The surplus says what it leaves out.** "Estimated monthly outgoings" is now
@@ -58,6 +64,10 @@
 - **The Subscriptions block of the CSV has a Note column,** and the summary has
   an **Average recent paycheck** row.
 - **Portfolio contributions** say "not tracked" when a statement has none.
+- **Due this pay period says which payments it counted.** A debt shown as paid
+  or part paid names them under it ("Nov 24 · $23.24"), so a payment on the
+  wrong debt is easy to spot. **Applied payments…** in a debt's Edit menu opens
+  the new list instead of a window.
 
 ### Fixed
 - **A plan can't cost more a month than what's left of it.** A plan with one
@@ -66,6 +76,10 @@
 - **Enter Paycheck no longer adds a line each time.** Entering a pay period's
   paycheck again replaces its line. Repeats already in your history are
   counted once in the export.
+- **Two debts with the same id are told apart.** An entry copied by hand shares
+  its id with the original, and applying, undoing or editing a payment then
+  landed on the first of them. The copy gets its own id when the plugin
+  starts.
 
 ## 1.31.1
 

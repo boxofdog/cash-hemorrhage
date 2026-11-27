@@ -3679,6 +3679,57 @@ function undoAppliedPayment(record, index, kind) {
   return { ok: true, restoredDue, entry };
 }
 
+// A payment can move to another debt of its own kind: a card to a card, a plan
+// to a plan, a loan to a loan. Their balances and due dates don't work alike.
+function sameDebtKind(a, b) {
+  return !!a && !!b && isRevolvingDebt(a) === isRevolvingDebt(b) && isLoan(a) === isLoan(b);
+}
+
+// Corrects an applied payment: its amount, its date, and for a loan whether it
+// was extra toward principal. A loan works its due date out again from its
+// payments; a plan or card moves on if the corrected payment now covers the
+// installment. Nothing else about it changes, and the transaction it came from
+// stays linked.
+function editAppliedPayment(record, index, changes = {}, kind) {
+  const entry = (record.applied_payments || [])[index];
+  if (!entry) return { ok: false, why: "missing" };
+  const hasAmount = changes.amount != null;
+  const amount = hasAmount ? round2(Math.abs(Number(changes.amount))) : null;
+  if (hasAmount && !(amount > 0)) return { ok: false, why: "amount" };
+  if (changes.date != null && !isISODateString(changes.date)) return { ok: false, why: "date" };
+  const isCC = kind === "cc";
+  const dueBefore = isCC ? record.due_date : record.next_due_date;
+  if (hasAmount) entry.amount = amount;
+  if (changes.date != null) entry.date = changes.date;
+  if (isLoan(record) && "extra" in changes) {
+    if (changes.extra) entry.extra = true;
+    else delete entry.extra;
+  }
+  const advanced = advanceDueDateIfCovered(record, kind);
+  if (advanced && !isLoan(record) && !entry.rolled) {
+    entry.rolled = { from: dueBefore || null, to: advanced };
+  }
+  return { ok: true, entry, advanced };
+}
+
+// Takes an applied payment off one debt and puts it on another of the same
+// kind, keeping its transaction, amount, date and extra flag. The first debt's
+// due date goes back if that payment had moved it; the second moves on if the
+// payment covers its installment. A payment the other debt already has isn't
+// added twice.
+function moveAppliedPayment(from, index, to, kind) {
+  if (!from || !to || from === to) return { ok: false, why: "same" };
+  if (!sameDebtKind(from, to)) return { ok: false, why: "kind" };
+  const entry = (from.applied_payments || [])[index];
+  if (!entry) return { ok: false, why: "missing" };
+  if (entry.tx_id && (to.applied_payments || []).some((p) => p && p.tx_id === entry.tx_id)) return { ok: false, why: "already" };
+  const moved = { id: entry.tx_id, amount: entry.amount, date: entry.date };
+  const taken = undoAppliedPayment(from, index, kind);
+  if (!taken.ok) return { ok: false, why: "missing" };
+  const advanced = applyPickedPayments(to, [moved], { extra: !!entry.extra }, kind);
+  return { ok: true, entry, restoredDue: taken.restoredDue, advanced };
+}
+
 // Things you told it to stop suggesting: two rows that aren't a transfer, two
 // that aren't the same purchase, and rows kept out of a debt's payment list.
 function dismissedSuggestions(transactions) {
@@ -8256,23 +8307,23 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
     return toLocalISO(d);
   };
 
-  const paidForCycle = (d, dueDateStr, frequency) => {
+  const cyclePayments = (d, dueDateStr, frequency) => {
     const from = cycleStart(dueDateStr, frequency);
-    return round2(
-      (d.applied_payments || [])
-        // A payment with no date is one deliberately applied to this debt —
-        // pending bank holds carry no posting date. Ignoring it silently
-        // charges the minimum a second time, so count it for the current cycle.
-        .filter((p) => !p.date || !from || p.date > from)
-        .reduce((s, p) => s + Math.abs(p.amount || 0), 0)
-    );
+    // A payment with no date is one deliberately applied to this debt —
+    // pending bank holds carry no posting date. Ignoring it silently
+    // charges the minimum a second time, so count it for the current cycle.
+    return (d.applied_payments || []).filter((p) => !p.date || !from || p.date > from);
   };
+  const paidForCycle = (d, dueDateStr, frequency) =>
+    round2(cyclePayments(d, dueDateStr, frequency).reduce((s, p) => s + Math.abs(p.amount || 0), 0));
 
   const annotate = (d, due, dueDateStr, frequency) => {
     const paid = paidForCycle(d, dueDateStr, frequency);
     const remaining = Math.max(0, round2(due - paid));
     return Object.assign(Object.create(Object.getPrototypeOf(d) || Object.prototype), d, {
       _due: round2(due),
+      // Which payments those were, so the Overview can say.
+      _payments: cyclePayments(d, dueDateStr, frequency).map((p) => ({ date: p.date || null, amount: round2(Math.abs(p.amount || 0)) })),
       _paidThisPeriod: paid,
       _remaining: remaining,
       _settled: paid > 0 && remaining <= 0.005
@@ -8885,11 +8936,15 @@ function applyTransactionRelinks(records, relink, field) {
 async function ensureIds(app, filePath, prefix) {
   const items = await readJSON(app, filePath, []);
   let changed = false;
+  const seen = new Set();
   items.forEach((item) => {
-    if (!item.id) {
+    // An id another record already has (an entry copied by hand) would send every
+    // apply, undo and edit to the first of them, so the later one gets its own.
+    if (!item.id || seen.has(item.id)) {
       item.id = genId(prefix);
       changed = true;
     }
+    seen.add(item.id);
   });
   if (changed) await writeJSON(app, filePath, items);
   return items;
@@ -12271,47 +12326,46 @@ class DismissedModal extends Modal {
 }
 
 // What's been applied to one debt, newest first, each with Undo.
-class AppliedPaymentsModal extends Modal {
-  constructor(app, debt, transactions, rules, onUndo) {
+// One applied payment's amount and date, and for a loan whether it was extra
+// toward principal.
+class EditAppliedPaymentModal extends Modal {
+  constructor(app, entry, isLoanDebt, onSubmit) {
     super(app);
-    this.debt = debt;
-    this.transactions = transactions || [];
-    this.rules = rules || [];
-    this.onUndo = onUndo;
+    this.entry = entry || {};
+    this.isLoanDebt = !!isLoanDebt;
+    this.onSubmit = onSubmit;
   }
   onOpen() {
-    this.draw();
-  }
-  draw() {
     const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h2", { text: `Applied payments: ${debtLabel(this.debt)}` });
-    const payments = (this.debt.applied_payments || []).map((p, i) => ({ p, i }));
-    if (!payments.length) {
-      contentEl.createEl("p", { text: "Nothing applied.", cls: "budget-muted" });
-      return;
+    const e = this.entry;
+    contentEl.createEl("h2", { text: "Edit payment" });
+    const d = { amount: String(Math.abs(Number(e.amount) || 0).toFixed(2)), date: e.date || "", extra: !!e.extra };
+    const amountSetting = new Setting(contentEl).setName("Amount");
+    amountSetting.addText((t) => bindMoneyInput(t, amountSetting).setValue(d.amount).onChange((v) => (d.amount = v)));
+    new Setting(contentEl).setName("Date").addText((t) => bindDateInput(t, d.date).onChange((v) => (d.date = v)));
+    if (this.isLoanDebt) {
+      new Setting(contentEl).setName("Extra toward principal").addToggle((tg) => tg.setValue(d.extra).onChange((v) => (d.extra = v)));
     }
-    const byId = new Map(this.transactions.filter((t) => t && t.id).map((t) => [t.id, t]));
-    payments
-      .sort((a, b) => ((b.p.date || "") < (a.p.date || "") ? -1 : (b.p.date || "") > (a.p.date || "") ? 1 : b.i - a.i))
-      .forEach(({ p, i }) => {
-        const row = contentEl.createDiv({ cls: "budget-apply-row" });
-        const tx = p.tx_id ? byId.get(p.tx_id) : null;
-        const label = row.createDiv({ cls: "budget-apply-label" });
-        label.createDiv({ text: tx ? displayMerchant(tx.merchant_raw, this.rules) : p.tx_id ? "(transaction deleted)" : "Typed in" });
-        const meta = label.createDiv({ cls: "budget-apply-meta" });
-        meta.createSpan({ text: p.date || "no date" });
-        if (p.extra) meta.createSpan({ text: "extra toward principal", cls: "budget-badge budget-badge-empty" });
-        row.createSpan({ text: `$${Math.abs(Number(p.amount) || 0).toFixed(2)}`, cls: "budget-amount" });
-        const undo = row.createEl("button", { text: "Undo", cls: "budget-btn" });
-        undo.setAttr("title", "Take this payment back off the debt");
-        undo.onclick = async () => {
-          const next = await this.onUndo(i);
-          if (!next) return;
-          this.debt = next;
-          this.draw();
-        };
-      });
+    new Setting(contentEl).addButton((b) =>
+      b
+        .setButtonText("Save")
+        .setCta()
+        .onClick(() => {
+          const amount = requireMoney(d.amount, "Amount");
+          if (amount == null) return;
+          if (!(amount > 0)) {
+            new Notice("Amount must be above 0.");
+            return;
+          }
+          const date = normalizeDate(d.date || "");
+          if (!isISODateString(date)) {
+            new Notice("Enter a date.");
+            return;
+          }
+          this.close();
+          this.onSubmit(Object.assign({ amount, date }, this.isLoanDebt ? { extra: d.extra } : {}));
+        })
+    );
   }
   onClose() {
     this.contentEl.empty();
@@ -15180,15 +15234,28 @@ class BudgetDashboardView extends ItemView {
         cls: `budget-fixed-row${d._settled ? " budget-fixed-paid" : ""}`
       });
       const label = d.provider || d.account_id || "Minimum payment";
-      li.createSpan({
-        text: d._settled
-          ? `${label} — paid`
-          : d._paidThisPeriod > 0
-            ? `${label} — $${d._paidThisPeriod.toFixed(2)} paid`
-            : `${label} minimum`,
-        // With Apply beside it, a long debt name wraps instead of being cut off.
-        cls: d._settled ? "budget-fixed-name" : "budget-fixed-name budget-buffer-text"
-      });
+      const heading = d._settled
+        ? `${label} — paid`
+        : d._paidThisPeriod > 0
+          ? `${label} — $${d._paidThisPeriod.toFixed(2)} paid`
+          : `${label} minimum`;
+      // Which payments it counted, when it counted any: "Nov 6 · $23.24". If one
+      // isn't the one you meant, it's on the debt's row under Debts.
+      const counted = (d._payments || []).filter((p) => p.amount > 0);
+      if (!counted.length) {
+        li.createSpan({
+          text: heading,
+          // With Apply beside it, a long debt name wraps instead of being cut off.
+          cls: d._settled ? "budget-fixed-name" : "budget-fixed-name budget-buffer-text"
+        });
+      } else {
+        const nameCell = li.createSpan({ cls: "budget-fixed-name budget-buffer-text" });
+        nameCell.createSpan({ text: heading });
+        nameCell.createSpan({
+          text: counted.map((p) => `${p.date ? formatShortDate(p.date) : "no date"} \u00b7 $${p.amount.toFixed(2)}`).join(", "),
+          cls: "budget-buffer-sub"
+        });
+      }
       li.createSpan({
         text: d._settled ? `$${d._due.toFixed(2)}` : `$${d._remaining.toFixed(2)}`,
         cls: "budget-amount"
@@ -16534,24 +16601,50 @@ class BudgetDashboardView extends ItemView {
     });
   }
 
-  // The payments applied to a debt, each one with a way to take it back.
-  openAppliedPayments(debt, kind, allTx, rules) {
-    new AppliedPaymentsModal(this.app, debt, allTx, rules, async (index) => {
-      const file = kind === "cc" ? FILES.revolvingDebts : FILES.installmentDebts;
-      const list = await readJSON(this.app, file, []);
-      const at = list.findIndex((d) => debtKey(d) === debtKey(debt));
-      if (at < 0) return null;
-      const r = undoAppliedPayment(list[at], index, kind);
-      if (!r.ok) return null;
-      await writeJSON(this.app, file, list);
-      new Notice(
-        `Took back the $${Math.abs(Number(r.entry.amount) || 0).toFixed(2)} payment.` + (r.restoredDue ? ` Next due ${r.restoredDue}.` : ""),
-        7000
-      );
-      await this.plugin.snapshotDebt();
-      await this.plugin.refreshAfterDataChange();
-      return list[at];
-    }).open();
+  // The payments applied to a debt, in a list under its row. Each can be
+  // corrected, moved to another debt of the same kind, or taken back.
+  renderAppliedPayments(row, debt, kind, ctx) {
+    const { allTx, rules } = ctx;
+    const list = row.createDiv({ cls: "budget-debt-applied-list" });
+    const byId = new Map((allTx || []).filter((t) => t && t.id).map((t) => [t.id, t]));
+    const key = debtKey(debt);
+    const others = (ctx.allDebts || []).filter((d) => d && debtKey(d) !== key && sameDebtKind(d, debt));
+    (debt.applied_payments || [])
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => ((b.p.date || "") < (a.p.date || "") ? -1 : (b.p.date || "") > (a.p.date || "") ? 1 : b.i - a.i))
+      .forEach(({ p, i }) => {
+        const line = list.createDiv({ cls: "budget-apply-row budget-applied-row" });
+        const tx = p.tx_id ? byId.get(p.tx_id) : null;
+        const label = line.createDiv({ cls: "budget-apply-label" });
+        label.createDiv({ text: tx ? displayMerchant(tx.merchant_raw, rules) : p.tx_id ? "(transaction deleted)" : "Typed in" });
+        const meta = label.createDiv({ cls: "budget-apply-meta" });
+        meta.createSpan({ text: p.date ? formatShortDate(p.date) : "no date" });
+        if (p.extra) meta.createSpan({ text: "extra toward principal", cls: "budget-badge budget-badge-empty" });
+        line.createSpan({ text: `$${Math.abs(Number(p.amount) || 0).toFixed(2)}`, cls: "budget-amount" });
+        const btns = line.createDiv({ cls: "budget-applied-btns" });
+        btns.createEl("button", { text: "Edit", cls: "budget-btn" }).onclick = () => {
+          new EditAppliedPaymentModal(this.app, p, kind === "loan", (changes) => this.plugin.editPayment(key, kind, i, changes)).open();
+        };
+        if (others.length) {
+          const move = btns.createEl("button", { text: "Move to\u2026", cls: "budget-btn" });
+          move.setAttr("title", "Put this payment on another debt");
+          move.onclick = (evt) => {
+            const menu = new Menu();
+            others.forEach((d) =>
+              menu.addItem((item) => {
+                item.setTitle(debtLabel(d));
+                item.onClick(() => this.plugin.movePayment(key, kind, i, debtKey(d)));
+              })
+            );
+            const rect = typeof move.getBoundingClientRect === "function" ? move.getBoundingClientRect() : null;
+            if (rect) menu.showAtPosition({ x: rect.left, y: rect.bottom });
+            else menu.showAtMouseEvent(evt);
+          };
+        }
+        const undo = btns.createEl("button", { text: "Unapply", cls: "budget-btn" });
+        undo.setAttr("title", "Take this payment back off the debt");
+        undo.onclick = () => this.plugin.unapplyPayment(key, kind, i);
+      });
   }
 
   async renderDebts(container, ctx) {
@@ -16615,10 +16708,23 @@ class BudgetDashboardView extends ItemView {
           bits.push(`${left} \u00d7 $${(debt.installment_amount || 0).toFixed(2)} left`);
           if (debt.next_due_date) bits.push(`next ${formatShortDate(debt.next_due_date)}`);
         }
-        const applied = (debt.applied_payments || []).length;
-        if (applied && kind !== "loan") bits.push(`${applied} payment${applied === 1 ? "" : "s"} applied`);
         textCol.createDiv({ text: bits.join(" \u00b7 "), cls: "budget-debt-meta" });
         if (loanDetail) this.renderLoanDetail(textCol, nameLine, debt);
+
+        // What's been applied to it, one tap away: each payment can be corrected,
+        // moved to another debt, or taken back.
+        const applied = (debt.applied_payments || []).length;
+        const appliedKey = `applied-${debtKey(debt)}`;
+        const appliedOpen = applied > 0 && !!this.sectionOpen[appliedKey];
+        if (applied) {
+          const toggle = textCol.createEl("button", { text: `${applied} payment${applied === 1 ? "" : "s"} applied`, cls: "budget-debt-applied-toggle" });
+          toggle.setAttr("aria-expanded", appliedOpen ? "true" : "false");
+          toggle.createSpan({ cls: `budget-debt-applied-chevron${appliedOpen ? " is-open" : ""}`, attr: { "aria-hidden": "true" } });
+          toggle.onclick = () => {
+            this.sectionOpen[appliedKey] = !appliedOpen;
+            this.render();
+          };
+        }
 
         if (cardState) {
           // One quiet line: where the balance started, what has posted since,
@@ -16740,7 +16846,7 @@ class BudgetDashboardView extends ItemView {
 
         // Payments applied to this debt, each of which can be taken back.
         const appliedEntry = (debt.applied_payments || []).length
-          ? [{ title: "Applied payments\u2026", run: () => this.openAppliedPayments(debt, kind, allTx, ctx.rules) }]
+          ? [{ title: "Applied payments\u2026", run: () => { this.sectionOpen[appliedKey] = true; this.render(); } }]
           : [];
         const entries =
           kind === "loan"
@@ -16778,6 +16884,8 @@ class BudgetDashboardView extends ItemView {
           if (rect) menu.showAtPosition({ x: rect.left, y: rect.bottom });
           else menu.showAtMouseEvent(evt);
         };
+
+        if (appliedOpen) this.renderAppliedPayments(row, debt, kind, ctx);
       };
 
       revolvingDebts.forEach((d) => renderDebtRow(d, "cc"));
@@ -20487,6 +20595,53 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
   }
 
   // Apply Payment for the debt with this key, read fresh from the files.
+  // An applied payment can be changed after the fact: taken back, corrected, or
+  // moved to another debt of the same kind. Cards are in one file, plans and
+  // loans in another, so a move stays inside a single read and write.
+  async changeAppliedPayment(kind, change) {
+    const file = kind === "cc" ? FILES.revolvingDebts : FILES.installmentDebts;
+    const list = await readJSON(this.app, file, []);
+    const result = change(list);
+    if (!result || !result.ok) return result || { ok: false };
+    await writeJSON(this.app, file, list);
+    await this.snapshotDebt();
+    await this.refreshAfterDataChange();
+    return result;
+  }
+
+  async unapplyPayment(key, kind, index) {
+    const r = await this.changeAppliedPayment(kind, (list) => {
+      const at = list.findIndex((d) => debtKey(d) === key);
+      return at < 0 ? { ok: false, why: "missing" } : undoAppliedPayment(list[at], index, kind);
+    });
+    if (r.ok) new Notice(`Took the $${Math.abs(Number(r.entry.amount) || 0).toFixed(2)} payment off.` + (r.restoredDue ? ` Next due ${r.restoredDue}.` : ""), 7000);
+    return r;
+  }
+
+  async movePayment(key, kind, index, toKey) {
+    let toName = "";
+    const r = await this.changeAppliedPayment(kind, (list) => {
+      const from = list.find((d) => debtKey(d) === key);
+      const to = list.find((d) => debtKey(d) === toKey);
+      if (!from || !to) return { ok: false, why: "missing" };
+      toName = debtLabel(to);
+      return moveAppliedPayment(from, index, to, kind);
+    });
+    if (r.ok) new Notice(`Moved $${Math.abs(Number(r.entry.amount) || 0).toFixed(2)} to ${toName}.` + (r.advanced ? ` Next due ${r.advanced}.` : ""), 7000);
+    else if (r.why === "already") new Notice(`${toName} already has that payment.`);
+    else if (r.why === "kind") new Notice("A payment can only move to a debt of the same kind.");
+    return r;
+  }
+
+  async editPayment(key, kind, index, changes) {
+    const r = await this.changeAppliedPayment(kind, (list) => {
+      const at = list.findIndex((d) => debtKey(d) === key);
+      return at < 0 ? { ok: false, why: "missing" } : editAppliedPayment(list[at], index, changes, kind);
+    });
+    if (r.ok) new Notice(`Payment updated.` + (r.advanced ? ` Next due ${r.advanced}.` : ""), 7000);
+    return r;
+  }
+
   async openApplyPaymentForKey(key) {
     const revolving = await readJSON(this.app, FILES.revolvingDebts, []);
     const installment = await readJSON(this.app, FILES.installmentDebts, []);

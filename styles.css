@@ -949,6 +949,71 @@ button.budget-link-btn.budget-link-btn:hover {
 
 .budget-debt-text-col { flex: 1; min-width: 160px; }
 
+/* "3 payments applied", a quiet link under the row that opens the list. */
+.budget-debt-applied-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-top: 0.15em;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.budget-debt-applied-toggle:hover { color: var(--text-normal); }
+
+.budget-debt-applied-chevron {
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.budget-debt-applied-chevron.is-open { transform: rotate(45deg); }
+
+/* The list opens across the whole row, under the figures and buttons. */
+.budget-debt-applied-list {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  max-width: 34em;
+  margin-top: 0.2em;
+  padding-left: 0.8em;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+/* Name and amount on one line, the three buttons under them, small. Scoped to
+   the list so it outranks the general apply-row layout further down. */
+.budget-debt-applied-list .budget-applied-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.15em 0.8em;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.budget-debt-applied-list .budget-applied-row .budget-amount { grid-column: 2; grid-row: 1; }
+
+.budget-applied-btns {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.4em;
+  flex-wrap: wrap;
+}
+
+.budget-applied-btns .budget-btn {
+  padding: 0.2em 0.75em;
+  font-size: 0.85em;
+}
+
 .budget-debt-name {
   font-weight: 600;
   display: flex;

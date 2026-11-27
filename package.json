@@ -16,7 +16,8 @@
     "mutate:retro": "python3 tools/mutate.py tools/mutations/retro-payments.py",
     "mutate:debttypes": "python3 tools/mutate.py tools/mutations/debt-types.py",
     "mutate:sinking": "python3 tools/mutate.py tools/mutations/sinking.py",
-    "mutate:export": "python3 tools/mutate.py tools/mutations/export-honest.py"
+    "mutate:export": "python3 tools/mutate.py tools/mutations/export-honest.py",
+    "mutate:applied": "python3 tools/mutate.py tools/mutations/applied-payments.py"
   },
   "devDependencies": {
     "acorn": "^8.12.0",
