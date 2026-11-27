@@ -80,6 +80,38 @@
   its id with the original, and applying, undoing or editing a payment then
   landed on the first of them. The copy gets its own id when the plugin
   starts.
+- **A sinking fund that stops following its savings account lets go of what
+  it held.** It kept counting that money as set aside, so nothing was held back
+  for the bill. Pointing it at another account does the same, and the old
+  account's transfers are asked about again.
+- **A withdrawal bigger than what a fund had saved no longer swallows the next
+  deposit.**
+- **Taking back Paid puts a fund where it was,** even when you paid it for a
+  date that wasn't the due date.
+- **Renaming or deleting a category reaches sinking funds,** as it does bills
+  and debts, and the delete dialog lists the funds that follow it.
+- **A fund's payment stays linked when two rows become one.** A bank hold that
+  posts, or a typed row merged into the bank's, used to leave the fund pointing
+  at a row that was gone, so the rent counted as spending. Deleting a
+  transaction a fund was paid with now warns first.
+- **Paid works for rent paid straight out of the savings account a fund
+  follows.** It wasn't offered, and a payment filed as a transfer no longer
+  teaches the fund "Transfer" as its category.
+- **Correcting an applied payment no longer moves a due date a second month.**
+  Saving a late payment as it was, or changing its date by a day, pushed the plan
+  or card on again and Unapply couldn't undo it. A correction that means the
+  payment no longer covers the installment puts the due date back.
+- **A plan or card due on the 29th, 30th or 31st credits an early payment.**
+  A month back from the 31st landed on the 3rd, so a payment on the 2nd wasn't
+  counted and the installment stayed reserved.
+- **Moving a payment that was applied as a pending hold keeps the day it was
+  applied,** not today.
+- **Export transactions to notes counts transfers the way the other exports
+  do.**
+- **A paycheck split across accounts counts once.** Deposits that together come
+  to what you entered are one paycheck, so the income average isn't pulled down.
+- **The last day of a month** still says a month is partial when your latest
+  transaction is older.
 
 ## 1.31.1
 

@@ -63,6 +63,19 @@ console.log("\n2. Each paycheck once");
   check("3 days apart is the same paycheck; the next one out isn't", edge.rows.map((r) => [r.date, r.source]), [["2026-10-31", "deposit"], ["2026-10-27", "both"]]);
   const near = H.mergedPaychecks([{ date: "2026-10-27", amount: 1600 }, { date: "2026-10-29", amount: 1600 }], [tx("n", "2026-10-29", 1600, "P", "Paycheck")]);
   check("one deposit matches one entry, the nearer", near.rows.map((r) => [r.date, r.source]), [["2026-10-29", "both"], ["2026-10-27", "entered"]]);
+  // A paycheck split between accounts arrives as more than one deposit.
+  const split = H.mergedPaychecks([{ date: "2026-10-30", amount: 1500 }], [tx("s1", "2026-10-30", 1000, "P", "Paycheck"), tx("s2", "2026-10-30", 500, "P", "Paycheck", "sav")]);
+  check("deposits that together come to the entered amount are one paycheck", [split.rows.length, split.rows[0].amount, split.rows[0].deposit, split.rows[0].source], [1, 1500, 1500, "both"]);
+  const over = H.mergedPaychecks([{ date: "2026-10-30", amount: 1500 }], [tx("s1", "2026-10-30", 1000, "P", "Paycheck"), tx("s2", "2026-10-30", 600, "P", "Paycheck", "sav")]);
+  check("more than was entered: the extra is its own deposit", over.rows.map((r) => [r.amount, r.source]), [[1500, "both"], [600, "deposit"]]);
+  const far = H.mergedPaychecks([{ date: "2026-10-30", amount: 1500 }], [tx("s1", "2026-10-30", 1000, "P", "Paycheck"), tx("s2", "2026-11-03", 500, "P", "Paycheck", "sav")]);
+  check("a deposit 4 days off isn't part of it", far.rows.map((r) => [r.date, r.source]), [["2026-11-03", "deposit"], ["2026-10-30", "both"]]);
+  const three = H.mergedPaychecks([{ date: "2026-10-30", amount: 1500 }], [tx("s1", "2026-10-29", 700, "P", "Paycheck"), tx("s2", "2026-10-30", 500, "P", "Paycheck", "sav"), tx("s3", "2026-10-31", 300, "P", "Paycheck", "sav2")]);
+  check("three parts add up too, and the amount shown for the deposits is their sum", [three.rows.length, three.rows[0].deposit], [1, 1500]);
+  const twoEntries = H.mergedPaychecks([{ date: "2026-10-30", amount: 1000 }, { date: "2026-11-13", amount: 1000 }], [tx("a", "2026-10-30", 600, "P", "Paycheck"), tx("b", "2026-10-31", 400, "P", "Paycheck", "sav"), tx("c", "2026-11-13", 1000, "P", "Paycheck")]);
+  check("each entry takes its own", twoEntries.rows.map((r) => [r.date, r.amount, r.deposit]), [["2026-11-13", 1000, 1000], ["2026-10-30", 1000, 1000]]);
+  const avg = snap({ paycheckHistory: [{ date: "2026-10-16", amount: 1500 }, { date: "2026-10-30", amount: 1500 }], transactions: [tx("a", "2026-10-16", 1000, "P", "Paycheck"), tx("b", "2026-10-16", 500, "P", "Paycheck", "sav"), tx("c", "2026-10-30", 1000, "P", "Paycheck"), tx("d", "2026-10-30", 500, "P", "Paycheck", "sav")] });
+  check("so income isn't understated by a split paycheck", [avg.income.average.amount, avg.income.monthly], [1500, r2(1500 * 26 / 12)]);
   check("junk entries are ignored", H.mergedPaychecks([null, { date: "nope", amount: 5 }, { date: "2026-10-01", amount: 0 }, { date: "2026-10-01", amount: -5 }], []).rows, []);
 
   // Entering the period's paycheck again replaces it.
@@ -171,7 +184,9 @@ console.log("\n5. Partial months");
   check("a past month whose last row is early is still whole", H.monthCoverage("2026-10", cov), null);
   check("the month the data starts in, when it starts on the 1st, is whole", H.monthCoverage("2026-08", H.ledgerCoverage([tx("x", "2026-08-01", -1, "A", "Gas"), tx("y", "2026-09-30", -1, "A", "Gas")], "2026-12-01")), null);
   check("this month with no row yet today goes through today", H.monthCoverage("2026-11", { first: "2026-05-18", last: "2026-10-28", todayStr: T }).to, T);
-  check("on the last day of the month it's whole", H.monthCoverage("2026-11", H.ledgerCoverage(rows, "2026-11-30")), null);
+  check("on the last day of the month, with rows through it, it's whole", H.monthCoverage("2026-11", H.ledgerCoverage(rows.concat([tx("m5", "2026-11-30", -1, "A", "Gas")]), "2026-11-30")), null);
+  check("on the last day, with the rows stopping short, it says so", H.monthCoverage("2026-11", H.ledgerCoverage(rows, "2026-11-30")).to, "2026-11-22");
+  check("the day after, it's a month that's over", H.monthCoverage("2026-11", H.ledgerCoverage(rows, "2026-12-01")), null);
   const both = H.monthCoverage("2026-05", H.ledgerCoverage([tx("x", "2026-05-18", -1, "A", "Gas"), tx("y", "2026-05-22", -1, "A", "Gas")], "2026-05-23"));
   check("data that starts and stops inside one month: the range", [both.days, H.monthCoverageNote(both)], [5, `${H.formatShortDate("2026-05-18")} to ${H.formatShortDate("2026-05-22")}, 5 of 31 days`]);
   check("the words", [H.monthCoverageNote(H.monthCoverage("2026-05", cov)), H.monthCoverageNote(H.monthCoverage("2026-11", cov)), H.monthCoverageNote(null)], [`data starts ${H.formatShortDate("2026-05-18")}, 14 of 31 days`, `through ${H.formatShortDate("2026-11-22")}, 22 of 30 days`, ""]);
@@ -205,6 +220,17 @@ console.log("\n6. In and out, without transfers");
   check("the summary says both", note.includes("Without transfers: in $2,000.00 · out $40.00"), true);
   const line = (m) => note.split("\n").find((l) => l.includes(m));
   check("a transfer's row says so in its category", [line("CARD PAYMENT").includes("Credit Card Payment (transfer)"), line("TO SAVINGS").includes("Moved (transfer)"), line("FROM CHECKING").includes("Moved (transfer)"), line("ONE SIDED").includes("Moved (transfer)"), /GROCERY \| Groceries \|/.test(line("GROCERY")), /PAYROLL \| Paycheck \|/.test(line("PAYROLL"))], [true, true, true, true, true, true]);
+  {
+    const store = { [F.transactions]: JSON.stringify(rows), [F.accounts]: "[]", [F.categories]: JSON.stringify(meta) };
+    const writes = {};
+    const app = { vault: { adapter: { exists: async () => true, read: async (p) => store[p], write: async (p, d) => { writes[p] = d; }, mkdir: async () => {} } } };
+    const plugin = Object.create(H.__PluginClass.prototype);
+    plugin.app = app;
+    global.__notices = [];
+    await plugin.exportTransactionNotes();
+    const written = Object.entries(writes).find(([k]) => /2026-10\.md$/.test(k))[1];
+    check("the Export transactions command treats transfers the same way", [written.includes("income_excluding_transfers: 2000.00"), written.includes("spending_excluding_transfers: 40.00"), written.includes("Credit Card Payment (transfer)")], [true, true, true]);
+  }
   const plain = H.buildTransactionNotes([tx("a", "2026-10-02", 5, "X", "Gas")], []).find((f) => f.name === "Transactions 2026-10").content;
   check("with no transfers the two sets are equal", plain.includes("money_in: 5.00") && plain.includes("income_excluding_transfers: 5.00"), true);
 

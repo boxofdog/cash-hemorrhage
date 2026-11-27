@@ -108,7 +108,7 @@ console.log("\n3. Correcting a payment");
   check("the amount and date change, the transaction stays linked", [r.ok, plan.applied_payments[0]], [true, { tx_id: "e1", amount: 12.5, date: "2026-11-25" }]);
   check("a payment that doesn't cover the installment leaves the date", [r.advanced, plan.next_due_date], [null, "2026-12-06"]);
   const up = H.editAppliedPayment(plan, 0, { amount: 23.24 }, "bnpl");
-  check("one raised to cover it moves the date on, and remembers it did", [up.advanced, plan.next_due_date, plan.applied_payments[0].rolled], ["2027-01-06", "2027-01-06", { from: "2026-12-06", to: "2027-01-06" }]);
+  check("one raised to cover it moves the date on, and remembers it did", [up.advanced, plan.next_due_date, plan.applied_payments[0].rolled], ["2027-01-06", "2027-01-06", { from: "2026-12-06", to: "2027-01-06", remaining: 13 }]);
   check("a negative amount is read as its size", [H.editAppliedPayment(plan, 0, { amount: -30 }, "bnpl").ok, plan.applied_payments[0].amount], [true, 30]);
   const before = clone(plan);
   check("a zero or junk amount, a bad date, a missing payment: refused, nothing changed", [H.editAppliedPayment(plan, 0, { amount: 0 }, "bnpl").why, H.editAppliedPayment(plan, 0, { amount: "abc" }, "bnpl").why, H.editAppliedPayment(plan, 0, { date: "11/24" }, "bnpl").why, H.editAppliedPayment(plan, 3, { amount: 5 }, "bnpl").why, plan], ["amount", "amount", "date", "missing", before]);
@@ -381,6 +381,80 @@ console.log("\n8. Two debts with one id");
   check("nothing to repair: nothing written", clean.writes, 0);
   const missing = await run([Object.assign(bigPlan(), { id: undefined }), smallPlan()]);
   check("a missing id is still filled", [missing.saved[0].id.startsWith("bnpl-"), missing.writes], [true, 1]);
+}
+
+// ===========================================================================
+console.log("\n9. Found by an audit: corrections and months with a 31st");
+{
+  const plan50 = () => ({ id: "p", provider: "Plan", installment_amount: 50, frequency: "monthly", next_due_date: "2026-12-06", remaining_installments: 10, balance_anchor: { amount: 500, date: "2026-11-01" }, applied_payments: [] });
+  const apply = (rec, amount, date, tx = "t") => H.applyPickedPayments(rec, [{ id: tx, amount: -amount, date }], {}, "bnpl");
+
+  // A payment that posts after the due date, then corrected by a day or just saved.
+  const late = plan50();
+  apply(late, 50, "2026-12-08");
+  check("a payment posted two days late covers it: due moves on, count down", [late.next_due_date, late.remaining_installments, late.applied_payments[0].rolled], ["2027-01-06", 9, { from: "2026-12-06", to: "2027-01-06", remaining: 10 }]);
+  const e1 = H.editAppliedPayment(late, 0, { date: "2026-12-09" }, "bnpl");
+  check("changing its date by a day doesn't move the plan on a second month", [e1.advanced, late.next_due_date, late.remaining_installments], ["2027-01-06", "2027-01-06", 9]);
+  H.editAppliedPayment(late, 0, { amount: 50, date: "2026-12-09" }, "bnpl");
+  check("nor does saving it as it is, however often", [late.next_due_date, late.remaining_installments], ["2027-01-06", 9]);
+  const u = H.undoAppliedPayment(late, 0, "bnpl");
+  check("and taking it back after that puts the plan where it was", [u.restoredDue, late.next_due_date, late.remaining_installments], ["2026-12-06", "2026-12-06", 10]);
+
+  const big = Object.assign(plan50(), { next_due_date: "2026-12-01" });
+  apply(big, 100, "2026-12-03");
+  H.editAppliedPayment(big, 0, {}, "bnpl");
+  check("a payment bigger than the installment: saved unchanged, still one month on", [big.next_due_date, big.remaining_installments], ["2027-01-01", 9]);
+
+  const card = { id: "c", account_id: "Card", min_payment_due: 40, due_date: "2026-12-10", balance_anchor: { amount: 500, date: "2026-11-01" }, applied_payments: [] };
+  H.applyPickedPayments(card, [{ id: "ct", amount: -40, date: "2026-12-12" }], {}, "cc");
+  H.editAppliedPayment(card, 0, { date: "2026-12-13" }, "cc");
+  check("a card is the same", card.due_date, "2027-01-10");
+
+  // Corrected down, or to a date outside the cycle: the due date goes back.
+  const down = plan50();
+  apply(down, 50, "2026-12-01");
+  check("a $50 payment moves it on", down.next_due_date, "2027-01-06");
+  const r = H.editAppliedPayment(down, 0, { amount: 20 }, "bnpl");
+  check("corrected to $20 it no longer covers it, so the plan is back on its date", [r.advanced, down.next_due_date, down.remaining_installments, "rolled" in down.applied_payments[0]], [null, "2026-12-06", 10, false]);
+  const run = (rec) => H.runAllocation({ cashOnHand: 2000, todayStr: "2026-12-01", nextPaydayStr: "2026-12-15", fixedExpenses: [], installmentDebts: [rec], revolvingDebts: [], transactions: [], categoryMeta: [] });
+  check("so $30 is still reserved for it that period", [run(down).requiredMinimums, run(down).dueInstallments[0]._paidThisPeriod], [30, 20]);
+  const away = plan50();
+  apply(away, 50, "2026-12-01");
+  H.editAppliedPayment(away, 0, { date: "2026-10-15" }, "bnpl");
+  check("corrected to a date outside its cycle, the same", [away.next_due_date, run(away).requiredMinimums], ["2026-12-06", 50]);
+  const up = plan50();
+  apply(up, 20, "2026-12-01");
+  check("a partial payment doesn't move it", up.next_due_date, "2026-12-06");
+  const ru = H.editAppliedPayment(up, 0, { amount: 50 }, "bnpl");
+  check("corrected up to the installment, it moves it, and remembers the count", [ru.advanced, up.applied_payments[0].rolled], ["2027-01-06", { from: "2026-12-06", to: "2027-01-06", remaining: 10 }]);
+  H.undoAppliedPayment(up, 0, "bnpl");
+  check("so taking that back restores both", [up.next_due_date, up.remaining_installments], ["2026-12-06", 10]);
+
+  // A date you changed yourself since is left alone.
+  const mine = plan50();
+  apply(mine, 50, "2026-12-08");
+  mine.next_due_date = "2026-12-20";
+  const rm = H.editAppliedPayment(mine, 0, { amount: 60 }, "bnpl");
+  check("an edit after you set the date yourself doesn't move it again, though the payment is in that cycle", [rm.advanced, mine.next_due_date, !!mine.applied_payments[0].rolled, mine.applied_payments[0].amount], [null, "2026-12-20", true, 60]);
+
+  // Moving keeps the day an undated payment was applied.
+  const lo = (id) => Object.assign(loan(), { id });
+  const a = lo("la");
+  a.applied_payments = [{ amount: 400, applied_on: "2026-11-14" }];
+  const b = lo("lb");
+  H.moveAppliedPayment(a, 0, b, "loan");
+  check("an undated loan payment keeps its applied-on day when moved", b.applied_payments[0].applied_on, "2026-11-14");
+
+  // Due on the 29th to the 31st.
+  const eom = Object.assign(plan50(), { next_due_date: "2027-03-31", balance_anchor: { amount: 500, date: "2027-02-01" } });
+  const adv = apply(eom, 50, "2027-03-02");
+  check("due on the 31st: a payment on the 2nd is in its cycle, which began the last day of February", [adv, eom.next_due_date], ["2027-04-30", "2027-04-30"]);
+  const eom2 = Object.assign(plan50(), { next_due_date: "2027-03-31", balance_anchor: { amount: 500, date: "2027-02-01" }, applied_payments: [{ tx_id: "x", amount: 50, date: "2027-03-02" }] });
+  const rr = H.runAllocation({ cashOnHand: 2000, todayStr: "2027-03-20", nextPaydayStr: "2027-04-03", fixedExpenses: [], installmentDebts: [eom2], revolvingDebts: [], transactions: [], categoryMeta: [] });
+  check("and the Overview agrees it's paid", [rr.dueInstallments[0]._paidThisPeriod, rr.requiredMinimums], [50, 0]);
+  const feb = Object.assign(plan50(), { next_due_date: "2027-03-30", balance_anchor: { amount: 500, date: "2027-02-01" }, applied_payments: [{ tx_id: "x", amount: 50, date: "2027-02-28" }] });
+  const rf = H.runAllocation({ cashOnHand: 2000, todayStr: "2027-03-20", nextPaydayStr: "2027-04-03", fixedExpenses: [], installmentDebts: [feb], revolvingDebts: [], transactions: [], categoryMeta: [] });
+  check("due the 30th: Feb 28 is as far back as the cycle goes, so it isn't in it", rf.dueInstallments[0]._paidThisPeriod, 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

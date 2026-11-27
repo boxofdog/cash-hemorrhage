@@ -23,7 +23,7 @@ const EXPORTS = [
   "cardBalanceState", "cardActivitySince", "isRevolvingDebt", "totalDebt", "debtKey",
   "buildOwnershipIndex", "buildPeriodObligations", "findUnreconciledObligations", "summarizeOwnership",
   "OWNER_TYPES", "RESERVED_OWNER_TYPES", "debtPaymentCategories", "BudgetSettingTab", "parseGenericBank", "parseCapitalOne", "findCol", "reconcileImport",
-  "DATE_COLS", "DESC_COLS", "AMOUNT_COLS", "TYPE_COLS", "STATUS_COLS", "TXID_COLS", "ADAPTERS", "renameCategory", "deleteCategory", "repointPaymentCategories", "completeOwnership", "DeleteCategoryModal", "collectCategories", "setPinnedGoal", "AddAccountModal", "DEFAULT_SETTINGS", "TargetTunerModal", "setCategoryTarget", "getPriorMonthCategorySpend", "priorMonthKey", "mergeSettledHolds", "applyTransactionRelinks", "reconcileImport", "MATCHABLE_OWNER_TYPES", "PickObligationModal", "KIND_LABELS"
+  "DATE_COLS", "DESC_COLS", "AMOUNT_COLS", "TYPE_COLS", "STATUS_COLS", "TXID_COLS", "ADAPTERS", "renameCategory", "deleteCategory", "repointPaymentCategories", "completeOwnership", "DeleteCategoryModal", "collectCategories", "setPinnedGoal", "AddAccountModal", "DEFAULT_SETTINGS", "TargetTunerModal", "setCategoryTarget", "getPriorMonthCategorySpend", "priorMonthKey", "mergeSettledHolds", "repairSettledHolds", "applyTransactionRelinks", "reconcileImport", "MATCHABLE_OWNER_TYPES", "PickObligationModal", "KIND_LABELS"
 ];
 
 // Names that may legitimately be absent — this same harness loads OLDER copies

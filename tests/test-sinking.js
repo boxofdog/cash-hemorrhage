@@ -61,11 +61,11 @@ console.log("\n2. What a paycheck carries");
   const unknown = at(rent(), "2026-10-16", { cadence: "every-full-moon", anchor_date: "2026-10-02" }, 14);
   check("a pay schedule it can't read is as good as none", [unknown.total, unknown.received, unknown.hold], [noSchedule.total, noSchedule.received, noSchedule.hold]);
 
-  check("money in the savings account counts as set aside, so less is held here", [at(rent({ saved_amount: 500 }), "2026-10-16").hold, at(rent({ saved_amount: 500 }), "2026-10-16").saved], [500, 500]);
-  check("enough in savings: nothing held", at(rent({ saved_amount: 1000 }), "2026-10-16").hold, 0);
-  check("more than the bill isn't more than the bill", [at(rent({ saved_amount: 9000 }), "2026-10-30").saved, at(rent({ saved_amount: 9000 }), "2026-10-30").hold], [1500, 0]);
-  check("a negative balance is nothing", at(rent({ saved_amount: -200 }), "2026-10-16").hold, 1000);
-  check("set aside counts whichever is more, the plan or the savings", [H.sinkingSetAside(at(rent(), "2026-10-16")), H.sinkingSetAside(at(rent({ saved_amount: 1200 }), "2026-10-16"))], [1000, 1200]);
+  check("money in the savings account counts as set aside, so less is held here", [at(rent({ account_id: "sav", saved_amount: 500 }), "2026-10-16").hold, at(rent({ account_id: "sav", saved_amount: 500 }), "2026-10-16").saved], [500, 500]);
+  check("enough in savings: nothing held", at(rent({ account_id: "sav", saved_amount: 1000 }), "2026-10-16").hold, 0);
+  check("more than the bill isn't more than the bill", [at(rent({ account_id: "sav", saved_amount: 9000 }), "2026-10-30").saved, at(rent({ account_id: "sav", saved_amount: 9000 }), "2026-10-30").hold], [1500, 0]);
+  check("a negative balance is nothing", at(rent({ account_id: "sav", saved_amount: -200 }), "2026-10-16").hold, 1000);
+  check("set aside counts whichever is more, the plan or the savings", [H.sinkingSetAside(at(rent(), "2026-10-16")), H.sinkingSetAside(at(rent({ account_id: "sav", saved_amount: 1200 }), "2026-10-16"))], [1000, 1200]);
   const prog = H.sinkingProgress(at(rent(), "2026-10-16"));
   check("the goal row's bar", [prog.saved, prog.target, prog.remaining, Math.round(prog.pct)], [1000, 1500, 500, 67]);
 
@@ -82,7 +82,7 @@ console.log("\n3. Paying it, and taking that back");
 {
   const f = rent();
   H.recordSinkingPayment(f, "2026-11-01", { id: "tx1", date: "2026-11-01", amount: -1500, resolved_category: "Rent" });
-  check("the payment is linked and the fund moves on", [f.paid_through, f.linked_payments, f.payment_category], ["2026-11-01", [{ tx_id: "tx1", amount: 1500, date: "2026-11-01", paid_for: "2026-11-01" }], "Rent"]);
+  check("the payment is linked and the fund moves on", [f.paid_through, f.linked_payments, f.payment_category], ["2026-11-01", [{ tx_id: "tx1", amount: 1500, date: "2026-11-01", paid_for: "2026-11-01", paid_through_before: "2026-10-01" }], "Rent"]);
   check("its next due date is the month after", at(f, "2026-11-13").due, "2026-12-01");
   H.recordSinkingPayment(f, "2026-12-01", null);
   check("paid with no transaction picked", [f.paid_through, f.linked_payments[1].tx_id], ["2026-12-01", null]);
@@ -105,7 +105,7 @@ console.log("\n4. What it holds back");
   check("so there is less to put toward debt or savings", [none.availableForDebt - one.availableForDebt, one.sinkingRows[0].name], [500, "Rent"]);
   const later = H.runAllocation(Object.assign({}, base, { todayStr: "2026-10-16", nextPaydayStr: "2026-10-30", goals: [rent()], sinkingRows: [at(rent(), "2026-10-16")] }));
   check("the second check: the running total, not just its share", later.sinkingHeld, 1000);
-  const mid = H.runAllocation(Object.assign({}, base, { goals: [rent({ saved_amount: 500 })], sinkingRows: [at(rent({ saved_amount: 500 }), "2026-10-02")] }));
+  const mid = H.runAllocation(Object.assign({}, base, { goals: [rent({ account_id: "sav", saved_amount: 500 })], sinkingRows: [at(rent({ account_id: "sav", saved_amount: 500 }), "2026-10-02")] }));
   check("a transfer already in savings isn't held back again", mid.sinkingHeld, 0);
 
   // The bill it takes over is held back by the fund, not also due in full.
@@ -168,7 +168,7 @@ console.log("\n7. On screen");
   button(li, "Paid").onclick();
   check("Paid opens it for that fund", calls.pop(), ["paid", "sink1"]);
   const withSavings = el("div");
-  v.renderObligationsCard(withSavings, { periodFixed: [], periodFixedPaid: [], dueInstallments: [], dueRevolvingMins: [], earmarked: 0, minimumsPaid: 0, sinkingRows: [at(rent({ saved_amount: 400 }), "2026-10-16")] }, { rules: [] });
+  v.renderObligationsCard(withSavings, { periodFixed: [], periodFixedPaid: [], dueInstallments: [], dueRevolvingMins: [], earmarked: 0, minimumsPaid: 0, sinkingRows: [at(rent({ account_id: "sav", saved_amount: 400 }), "2026-10-16")] }, { rules: [] });
   check("what's in savings is said too", text(withSavings).includes("$400.00 in savings"), true);
   const overdue = el("div");
   v.renderObligationsCard(overdue, { periodFixed: [], periodFixedPaid: [], dueInstallments: [], dueRevolvingMins: [], earmarked: 0, minimumsPaid: 0, sinkingRows: [at(rent(), "2026-11-05")] }, { rules: [] });

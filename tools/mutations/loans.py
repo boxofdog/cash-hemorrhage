@@ -46,6 +46,6 @@ MUTATIONS = [
  ("loans backfilled as BNPL", "d.payment_category = isLoan(d) ? LOAN_TYPES[loanType(d)].category : \"BNPL\";", "d.payment_category = \"BNPL\";"),
  ("stale pick kept", "      if (d.tx && !list.some((t) => t.id === d.tx)) d.tx = null;", ""),
  ("relink date not filled", "if (field === \"applied_payments\" && !entry.date && dates.get(next)) entry.date = dates.get(next);", ""),
- ("apply drops extra flag", "picked.map((p) => Object.assign({ tx_id: p.id, amount: Math.abs(p.amount), date: p.date, applied_on: todayLocal() }, opts.extra ? { extra: true } : {}))\n        );\n        const advanced", "picked.map((p) => Object.assign({ tx_id: p.id, amount: Math.abs(p.amount), date: p.date, applied_on: todayLocal() }, {}))\n        );\n        const advanced"),
+ ("apply drops extra flag", "date: p.date, applied_on: todayLocal() }, extra ? { extra: true } : {}))", "date: p.date, applied_on: todayLocal() }, {}))"),
  ("balance blur re-anchors", "balanceChanged: !isEdit || round2(balance) !== startBalance,", "balanceChanged: true,"),
 ]

@@ -3616,6 +3616,8 @@ function transactionLinks(txId, { installmentDebts = [], revolvingDebts = [], fi
   });
   (goals || []).forEach((g) => {
     if (g && (g.contributions || []).some((c) => c && c.linked_tx_id === txId)) out.push({ kind: "goal", name: g.name || "a goal" });
+    // A sinking fund's payment is a bill paid.
+    if (g && (g.linked_payments || []).some((p) => p && p.tx_id === txId)) out.push({ kind: "bill", name: g.name || "a bill" });
   });
   return out;
 }
@@ -3658,6 +3660,20 @@ function applyPickedPayments(record, picked, { extra = false } = {}, kind) {
 // Takes one applied payment back off a debt. A loan's due date is worked out
 // from its payments, so it simply recomputes; a plan or card puts back the date
 // and count that payment moved, when it recorded them.
+// Puts a plan's or card's due date (and a plan's count) back where the payment
+// that moved it found them. Only when nothing has moved it since: a date you've
+// changed yourself, or a later payment, is left alone. Returns the date, or null.
+function restoreRoll(record, entry, kind) {
+  if (!entry || !entry.rolled) return null;
+  const isCC = kind === "cc";
+  const current = isCC ? record.due_date : record.next_due_date;
+  if (!(entry.rolled.from && current === entry.rolled.to)) return null;
+  if (isCC) record.due_date = entry.rolled.from;
+  else record.next_due_date = entry.rolled.from;
+  if (typeof entry.rolled.remaining === "number") record.remaining_installments = entry.rolled.remaining;
+  return entry.rolled.from;
+}
+
 function undoAppliedPayment(record, index, kind) {
   const list = record.applied_payments || [];
   const entry = list[index];
@@ -3667,14 +3683,7 @@ function undoAppliedPayment(record, index, kind) {
   if (isLoan(record)) {
     restoredDue = advanceDueDateIfCovered(record, kind);
   } else if (entry.rolled) {
-    const isCC = kind === "cc";
-    const current = isCC ? record.due_date : record.next_due_date;
-    if (entry.rolled.from && current === entry.rolled.to) {
-      if (isCC) record.due_date = entry.rolled.from;
-      else record.next_due_date = entry.rolled.from;
-      if (typeof entry.rolled.remaining === "number") record.remaining_installments = entry.rolled.remaining;
-      restoredDue = entry.rolled.from;
-    }
+    restoredDue = restoreRoll(record, entry, kind);
   }
   return { ok: true, restoredDue, entry };
 }
@@ -3698,16 +3707,27 @@ function editAppliedPayment(record, index, changes = {}, kind) {
   if (hasAmount && !(amount > 0)) return { ok: false, why: "amount" };
   if (changes.date != null && !isISODateString(changes.date)) return { ok: false, why: "date" };
   const isCC = kind === "cc";
-  const dueBefore = isCC ? record.due_date : record.next_due_date;
+  // A plan or card the payment had moved on is put back first, so the corrected
+  // payment decides afresh: the same one moves it once, a smaller one or one
+  // from another cycle doesn't. If the date has been changed since, it's left.
+  const wasRolled = !isLoan(record) && !!entry.rolled;
+  const restored = wasRolled ? restoreRoll(record, entry, kind) : null;
+  if (restored) delete entry.rolled;
   if (hasAmount) entry.amount = amount;
   if (changes.date != null) entry.date = changes.date;
   if (isLoan(record) && "extra" in changes) {
     if (changes.extra) entry.extra = true;
     else delete entry.extra;
   }
-  const advanced = advanceDueDateIfCovered(record, kind);
-  if (advanced && !isLoan(record) && !entry.rolled) {
-    entry.rolled = { from: dueBefore || null, to: advanced };
+  let advanced = null;
+  if (isLoan(record) || !wasRolled || restored) {
+    const dueBefore = isCC ? record.due_date : record.next_due_date;
+    const remainingBefore = record.remaining_installments;
+    advanced = advanceDueDateIfCovered(record, kind);
+    if (advanced && !isLoan(record)) {
+      entry.rolled = { from: dueBefore || null, to: advanced };
+      if (typeof remainingBefore === "number") entry.rolled.remaining = remainingBefore;
+    }
   }
   return { ok: true, entry, advanced };
 }
@@ -3727,6 +3747,9 @@ function moveAppliedPayment(from, index, to, kind) {
   const taken = undoAppliedPayment(from, index, kind);
   if (!taken.ok) return { ok: false, why: "missing" };
   const advanced = applyPickedPayments(to, [moved], { extra: !!entry.extra }, kind);
+  // A payment with no date counts from the day it was applied; moving it doesn't
+  // make that today.
+  if (entry.applied_on) to.applied_payments[to.applied_payments.length - 1].applied_on = entry.applied_on;
   return { ok: true, entry, restoredDue: taken.restoredDue, advanced };
 }
 
@@ -4061,7 +4084,9 @@ function sinkingHold(fund, { schedule = null, todayStr = todayLocal(), periodDay
   const overdue = todayStr >= due;
   if (received > total) received = total;
 
-  const saved = round2(Math.min(amount, Math.max(0, Number(fund.saved_amount) || 0)));
+  // Only money in the savings account the fund follows counts as saved. With no
+  // account followed there is none, whatever an account it used to follow left.
+  const saved = fund.account_id ? round2(Math.min(amount, Math.max(0, Number(fund.saved_amount) || 0))) : 0;
   const target = round2((amount * received) / total);
   return {
     id: fund.id,
@@ -4104,9 +4129,12 @@ function sinkingProgress(row) {
 
 // A payment recorded for a due date, linking the transaction when one was
 // picked, and the fund starts on the next due date. Like a bill's.
-function recordSinkingPayment(fund, dueDate, tx) {
+// `learnCategory` false keeps the payment's own category from becoming the
+// fund's: money out of the savings account it follows is filed as a transfer.
+function recordSinkingPayment(fund, dueDate, tx, { learnCategory = true } = {}) {
+  const before = fund.paid_through || null;
   fund.paid_through = dueDate;
-  if (!fund.payment_category && tx && tx.resolved_category && tx.resolved_category !== "Uncategorized") {
+  if (learnCategory && !fund.payment_category && tx && tx.resolved_category && tx.resolved_category !== "Uncategorized") {
     fund.payment_category = tx.resolved_category;
   }
   if (!Array.isArray(fund.linked_payments)) fund.linked_payments = [];
@@ -4114,7 +4142,10 @@ function recordSinkingPayment(fund, dueDate, tx) {
     tx_id: tx && tx.id ? tx.id : null,
     amount: tx ? round2(Math.abs(tx.amount || 0)) : null,
     date: tx && tx.date ? tx.date : dueDate,
-    paid_for: dueDate
+    paid_for: dueDate,
+    // Where it stood before, so taking the payment back puts it there even when
+    // the date it was paid for wasn't a due date.
+    paid_through_before: before
   });
   return fund;
 }
@@ -4130,7 +4161,8 @@ function undoSinkingPayment(fund) {
   const gone = list[last];
   fund.linked_payments = list.filter((_, i) => i !== last);
   const day = Number(fund.due_day_of_month);
-  if (gone && gone.paid_for && day >= 1) fund.paid_through = sinkingDueBefore(day, gone.paid_for);
+  if (gone && gone.paid_through_before) fund.paid_through = gone.paid_through_before;
+  else if (gone && gone.paid_for && day >= 1) fund.paid_through = sinkingDueBefore(day, gone.paid_for);
   return gone;
 }
 
@@ -4402,7 +4434,10 @@ function assignGoalTransfer(goals, tx, goalId, contributionId = null) {
     source: "account"
   };
   goal.contributions = (goal.contributions || []).concat([contribution]);
-  goal.saved_amount = round2((Number(goal.saved_amount) || 0) + contribution.amount);
+  const next = round2((Number(goal.saved_amount) || 0) + contribution.amount);
+  // A sinking fund can't hold less than nothing: a withdrawal of more than it had
+  // would otherwise swallow the next deposit.
+  goal.saved_amount = isSinkingFund(goal) ? Math.max(0, next) : next;
   return { goal, contribution, matched: false };
 }
 
@@ -4930,9 +4965,8 @@ function advanceDueDateIfCovered(debt, kind) {
   const stepBack = (dateStr) => {
     if (freq === "weekly") return addDays(dateStr, -7);
     if (freq === "biweekly") return addDays(dateStr, -14);
-    const d = new Date(`${dateStr}T00:00:00`);
-    d.setMonth(d.getMonth() - 1);
-    return toLocalISO(d);
+    // A month back from the 31st is the previous month's last day, not the 3rd.
+    return addLoanMonths(dateStr, -1);
   };
   const stepForward = (dateStr) => {
     if (freq === "weekly") return addDays(dateStr, 7);
@@ -5446,9 +5480,27 @@ function mergedPaychecks(entered, transactions, category = "Paycheck") {
     matched.set(pr.date, pr.i);
     taken.add(pr.i);
   });
+  // A paycheck split across accounts arrives as several deposits. Other deposits
+  // just as near an entry, as long as together they don't come to more than what
+  // was entered, are the rest of that paycheck, not paychecks of their own.
+  const depositTotal = new Map();
+  [...byDate.keys()].sort().forEach((date) => {
+    if (!matched.has(date)) return;
+    let total = deposits[matched.get(date)].amount;
+    pairs
+      .filter((pr) => pr.date === date && !taken.has(pr.i))
+      .forEach((pr) => {
+        const amount = deposits[pr.i].amount;
+        if (total + amount <= byDate.get(date) + 0.005) {
+          total += amount;
+          taken.add(pr.i);
+        }
+      });
+    depositTotal.set(date, round2(total));
+  });
   const rows = [...byDate.keys()].sort().map((date) =>
     matched.has(date)
-      ? { date, amount: byDate.get(date), source: "both", deposit: round2(deposits[matched.get(date)].amount), depositDate: deposits[matched.get(date)].date }
+      ? { date, amount: byDate.get(date), source: "both", deposit: depositTotal.get(date), depositDate: deposits[matched.get(date)].date }
       : { date, amount: byDate.get(date), source: "entered" }
   );
   deposits.forEach((t, i) => {
@@ -5499,7 +5551,7 @@ function monthCoverage(monthKey, cov) {
   const end = `${monthKey}-${String(lastDay).padStart(2, "0")}`;
   const from = cov.first > start && cov.first <= end ? cov.first : start;
   let to = end;
-  if (cov.todayStr >= start && cov.todayStr < end) to = cov.last && cov.last >= start && cov.last < cov.todayStr ? cov.last : cov.todayStr;
+  if (cov.todayStr >= start && cov.todayStr <= end) to = cov.last && cov.last >= start && cov.last < cov.todayStr ? cov.last : cov.todayStr;
   if (from === start && to === end) return null;
   return { from, to, days: daysBetween(from, to) + 1, of: lastDay, startsLate: from !== start, endsEarly: to !== end };
 }
@@ -7118,7 +7170,7 @@ async function setCategoryTransfer(app, name, isTransfer) {
 // Phone Bill failure, reintroduced by a rename.
 async function repointPaymentCategories(app, oldName, newName) {
   let moved = 0;
-  for (const file of [FILES.fixedExpenses, FILES.installmentDebts, FILES.revolvingDebts]) {
+  for (const file of [FILES.fixedExpenses, FILES.installmentDebts, FILES.revolvingDebts, FILES.savingsGoals]) {
     const records = await readJSON(app, file, []);
     let changed = false;
     records.forEach((r) => {
@@ -8301,10 +8353,8 @@ function runAllocation({ cashOnHand, todayStr, nextPaydayStr, fixedExpenses, ins
     if (!dueDateStr) return null;
     if (frequency === "weekly") return addDays(dueDateStr, -7);
     if (frequency === "biweekly") return addDays(dueDateStr, -14);
-    const d = new Date(`${dueDateStr}T00:00:00`);
-    if (isNaN(d.getTime())) return null;
-    d.setMonth(d.getMonth() - 1);
-    return toLocalISO(d);
+    if (isNaN(new Date(`${dueDateStr}T00:00:00`).getTime())) return null;
+    return addLoanMonths(dueDateStr, -1);
   };
 
   const cyclePayments = (d, dueDateStr, frequency) => {
@@ -8741,9 +8791,11 @@ function mergeSettledHolds(transactions, { installmentDebts = [], revolvingDebts
   (fixedExpenses || []).forEach((f) =>
     (f.linked_payments || []).forEach((p) => p && p.tx_id && linkOwner.set(p.tx_id, `fixed:${f.id || f.name}`))
   );
-  (goals || []).forEach((g) =>
-    (g.contributions || []).forEach((c) => c && c.linked_tx_id && linkOwner.set(c.linked_tx_id, `goal:${g.id}`))
-  );
+  (goals || []).forEach((g) => {
+    (g.contributions || []).forEach((c) => c && c.linked_tx_id && linkOwner.set(c.linked_tx_id, `goal:${g.id}`));
+    // A sinking fund's rent payment is a link to the same fund.
+    (g.linked_payments || []).forEach((p) => p && p.tx_id && linkOwner.set(p.tx_id, `goal:${g.id}`));
+  });
 
   const LEAD_IN = /^(pos hold|hold|pending|pos debit|point of sale withdrawal|recurring withdrawal debit card|withdrawal debit card|debit card purchase|purchase authorized on)[\s,:;-]*/;
   const core = (v) => {
@@ -8859,7 +8911,8 @@ async function repairSettledHolds(app) {
     [installmentDebts, "applied_payments"],
     [revolvingDebts, "applied_payments"],
     [fixedExpenses, "linked_payments"],
-    [goals, "contributions"]
+    [goals, "contributions"],
+    [goals, "linked_payments"]
   ].forEach(([records, field]) => {
     const r = applyTransactionRelinks(records, result.relink, field);
     relinked += r.moved;
@@ -19315,7 +19368,8 @@ class BudgetSettingTab extends PluginSettingTab {
     const payers = [].concat(
       (await readJSON(this.app, FILES.fixedExpenses, [])).map((e) => ({ name: e.name, cat: e.payment_category })),
       (await readJSON(this.app, FILES.installmentDebts, [])).map((d) => ({ name: debtLabel(d), cat: d.payment_category })),
-      (await readJSON(this.app, FILES.revolvingDebts, [])).map((d) => ({ name: debtLabel(d), cat: d.payment_category }))
+      (await readJSON(this.app, FILES.revolvingDebts, [])).map((d) => ({ name: debtLabel(d), cat: d.payment_category })),
+      sinkingFunds(await readJSON(this.app, FILES.savingsGoals, [])).map((g) => ({ name: g.name, cat: g.payment_category }))
     );
     const dependentsOf = (name) => payers.filter((p) => p.cat === name).map((p) => p.name);
 
@@ -20252,7 +20306,7 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     try {
       const transactions = await readJSON(this.app, FILES.transactions, []);
       const accounts = await readJSON(this.app, FILES.accounts, []);
-      const files = buildTransactionNotes(transactions, accounts);
+      const files = buildTransactionNotes(transactions, accounts, { categoryMeta: await readJSON(this.app, FILES.categories, []) });
       const adapter = this.app.vault.adapter;
       for (const dir of [EXPORT_DIR.split("/")[0], EXPORT_DIR, TX_NOTES_DIR]) {
         if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
@@ -20916,7 +20970,8 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
       [FILES.installmentDebts, "applied_payments"],
       [FILES.revolvingDebts, "applied_payments"],
       [FILES.fixedExpenses, "linked_payments"],
-      [FILES.savingsGoals, "contributions"]
+      [FILES.savingsGoals, "contributions"],
+      [FILES.savingsGoals, "linked_payments"]
     ];
     for (const [file, field] of files) {
       const records = await readJSON(this.app, file, []);
@@ -21774,7 +21829,16 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
         if (existing && existing.id) {
           const i = list.findIndex((g) => g && g.id === existing.id);
           if (i < 0) return;
-          list[i] = Object.assign({}, list[i], data);
+          const prev = list[i];
+          list[i] = Object.assign({}, prev, data);
+          // What the old account held for it isn't there to count any more: its
+          // transfers go back to being asked about, and what they added comes off.
+          if ((prev.account_id || null) !== (data.account_id || null)) {
+            const fromAccount = (prev.contributions || []).filter((c) => c && c.source === "account");
+            await this.releaseGoalTransfers(fromAccount.map((c) => c.linked_tx_id));
+            list[i].contributions = (prev.contributions || []).filter((c) => !(c && c.source === "account"));
+            list[i].saved_amount = round2(list[i].contributions.reduce((s, c) => s + (Number(c && c.amount) || 0), 0));
+          }
           if (!list[i].account_id) {
             delete list[i].account_id;
             delete list[i].track_from;
@@ -21819,14 +21883,18 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
     const rules = await readJSON(this.app, FILES.rules, []);
     new MarkPaidModal(
       this.app,
-      { id: fund.id, name: fund.name, amount: fund.target_amount },
+      { id: fund.id, name: fund.name, amount: fund.target_amount, fundId: fund.id },
       row.due,
       async (paidFor, tx) => {
         const list = await readJSON(this.app, FILES.savingsGoals, []);
         const f = list.find((g) => g && g.id === fundId);
         if (!f) return;
-        recordSinkingPayment(f, paidFor, tx);
-        if (tx && f.account_id && tx.account_id === f.account_id && tx.amount < 0) {
+        const fromFollowed = !!(tx && f.account_id && tx.account_id === f.account_id && tx.amount < 0);
+        // Out of the account it follows, a payment is often filed as a transfer:
+        // that isn't what the bill is called.
+        const transferCats = new Set((await readJSON(this.app, FILES.categories, [])).filter((c) => c && c.is_transfer).map((c) => c.name));
+        recordSinkingPayment(f, paidFor, tx, { learnCategory: !(tx && transferCats.has(tx.resolved_category)) });
+        if (fromFollowed) {
           const claimed = list.some((g) => (g.contributions || []).some((c) => c && c.linked_tx_id === tx.id));
           if (!claimed) {
             const ledger = await readJSON(this.app, FILES.transactions, []);
@@ -22039,11 +22107,12 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
   async fixedPaymentCandidates(expense, dueDateStr) {
     const transactions = await readJSON(this.app, FILES.transactions, []);
     const rules = await readJSON(this.app, FILES.rules, []);
-    return fixedExpenseCandidates(
+    const goals = await readJSON(this.app, FILES.savingsGoals, []);
+    const list = fixedExpenseCandidates(
       expense,
       transactions,
       await readJSON(this.app, FILES.fixedExpenses, []),
-      await readJSON(this.app, FILES.savingsGoals, []),
+      goals,
       await readJSON(this.app, FILES.installmentDebts, []),
       await readJSON(this.app, FILES.revolvingDebts, []),
       dueDateStr,
@@ -22054,6 +22123,18 @@ module.exports = class BudgetTrackerPlugin extends Plugin {
         subscriptionKeys: await this.keptSubscriptionKeys(transactions, rules)
       }
     );
+    // A sinking fund paid straight out of the savings account it follows: that
+    // withdrawal was already filed against the fund as money out of it, which
+    // keeps it out of the list above, but it's the payment.
+    const fund = expense && expense.fundId ? goals.find((g) => g && g.id === expense.fundId && isSinkingFund(g)) : null;
+    if (!fund || !fund.account_id || !dueDateStr) return list;
+    const mine = new Set((fund.contributions || []).filter((c) => c && c.linked_tx_id && Number(c.amount) < 0).map((c) => c.linked_tx_id));
+    const paid = new Set((fund.linked_payments || []).map((p) => p && p.tx_id).filter(Boolean));
+    const have = new Set(list.map((t) => t.id));
+    const from = addDays(dueDateStr, -12);
+    const to = addDays(dueDateStr, 12);
+    const own = transactions.filter((t) => t && mine.has(t.id) && !paid.has(t.id) && !have.has(t.id) && t.amount < 0 && t.date && t.date >= from && t.date <= to);
+    return own.concat(list);
   }
 
   // The subscriptions the audit is still keeping. Needed wherever an ownership
