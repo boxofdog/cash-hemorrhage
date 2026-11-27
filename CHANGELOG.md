@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.32.0 (unreleased)
+## 1.32.0
 
 ### Added
 - **Sinking funds, for bills like rent.** Give it an amount and a due day of the
